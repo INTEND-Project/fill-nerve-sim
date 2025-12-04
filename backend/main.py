@@ -5,12 +5,20 @@ from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response, Body
 from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_db
 from models import NodeCreate, WorkloadCreate, WorkloadVersionCreate
 
 app = FastAPI(title="Simulated TTTech Nerve API")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 def generate_id() -> str:
     """Generate a UUID4 string for database objects."""
@@ -52,7 +60,7 @@ def create_node(node: NodeCreate):
     doc["state"] = "OFFLINE"
     doc["createdAt"] = datetime.datetime.utcnow()
     # Initialize target configuration fields
-    doc["target_config"] = None
+    doc["target_config"] = {"schema_version": 1, "workloads": []}
     doc["deployed_workloads"] = []
 
     db.nodes.insert_one(doc)
@@ -168,3 +176,48 @@ def apply_dna_target(
         },
     )
     return JSONResponse(content={"message": "DNA configuration accepted and will be applied"}, status_code=202)
+
+
+@app.delete("/nerve/node/{serialNumber}")
+def delete_node(serialNumber: str):
+    """
+    Delete a node by its serial number.
+    """
+    db = get_db()
+    result = db.nodes.delete_one({"serialNumber": serialNumber})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Node not found")
+    # Optionally remove any target/deployed config for this node if needed.
+    return {"message": "Node deleted"}
+
+
+@app.delete("/nerve/v3/workloads/{workload_id}")
+def delete_workload(workload_id: str):
+    """
+    Delete an entire workload by its ID.
+    """
+    db = get_db()
+    result = db.workloads.delete_one({"_id": workload_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Workload not found")
+    # Optionally, you could also clean up references in node DNA configs here.
+    return {"message": "Workload deleted"}
+
+
+@app.delete("/nerve/v3/workloads/{workload_id}/versions/{version_id}")
+def delete_workload_version(workload_id: str, version_id: str):
+    """
+    Delete a specific workload version by its ID.
+    """
+    db = get_db()
+    result = db.workloads.update_one(
+        {"_id": workload_id},
+        {"$pull": {"versions": {"_id": version_id}}}
+    )
+    # modified_count > 0 indicates that a version was removed
+    if result.modified_count == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="Workload or version not found"
+        )
+    return {"message": "Workload version deleted"}

@@ -10,14 +10,22 @@ services:
       - mongo-data:/data/db
 
   nerve-app:
-    build: .
+    build: ./backend
     container_name: nerve_app
     ports:
-      - "8000:8000"
+      - "3000:3000"
     depends_on:
       - mongo
     environment:
       - MONGO_URI=mongodb://mongo:27017
-
+      
+  nerve-dashboard:
+    build: ./frontend
+    container_name: nerve_dashboard
+    ports:
+      - "8080:80"
+    depends_on:
+      - nerve-app
+    
 volumes:
   mongo-data:

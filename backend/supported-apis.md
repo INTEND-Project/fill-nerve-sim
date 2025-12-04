@@ -1,6 +1,6 @@
 # TTTech Nerve API methods
 
-Below are common management system (MS) endpoints for **Nerve API**.  The examples are based on TTTech’s `nerve‑lib` library, which maps directly to the REST endpoints.  Each operation includes the HTTP method, the endpoint, and sample input/output.  The serial numbers and IDs in the samples are illustrative.
+Below are common management system (MS) endpoints for **Nerve API**.  The examples are based on `nerve‑lib` library, which maps directly to the REST endpoints.  Each operation includes the HTTP method, the endpoint, and sample input/output.  The serial numbers and IDs in the samples are illustrative.
 
 ## 1 List all nodes
 
@@ -339,3 +339,19 @@ Authorization: Bearer <token>
     - **Cancel configuration:** `PATCH /nerve/dna/{serialNumber}/target/cancel`【454521264523735†L230-L243】 – cancels an ongoing configuration.
 
     These endpoints complete the workflow for uploading and applying DNA configurations using YAML.
+
+
+## Delete node
+	- **HTTP method**: `DELETE`
+	- **Endpoint**: `/nerve/node/{serialNumber}`
+Deletes a node identified by its serial number. If the node exists it is removed from the management system and a confirmation message is returned; otherwise the API responds with HTTP 404.
+
+## Delete workload
+	- **HTTP method**: `DELETE`
+	- **Endpoint**: `/nerve/v3/workloads/{workload_id}`
+Deletes an entire workload by its ID. The workload and all associated versions are removed from the database. If the workload does not exist a 404 status is returned.
+
+## Delete workload version
+	- **HTTP method**: `DELETE`
+	- **Endpoint**: `/nerve/v3/workloads/{workload_id}/versions/{version_id}`
+Deletes a specific version of a workload. The version is removed from the workload’s version list. If either the workload or version is not found, the API returns HTTP 404.

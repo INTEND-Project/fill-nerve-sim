@@ -15,7 +15,7 @@ COPY . /app
 ENV MONGO_URI=mongodb://mongo:27017
 
 # Expose port for the FastAPI app
-EXPOSE 8000
+EXPOSE 3000
 
 # Command to run the FastAPI application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "3000"]
