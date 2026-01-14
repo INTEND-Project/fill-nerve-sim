@@ -1,0 +1,33 @@
+# Ignore Python bytecode, caches and virtual environments
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtualenvs and env files
+.venv/
+venv/
+env/
+ENV/
+.env
+.env.* 
+
+# Build / packaging artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+wheels/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Editor / OS files
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Logs
+*.log
