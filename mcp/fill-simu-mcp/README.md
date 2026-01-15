@@ -2,13 +2,13 @@
 
 # Native run
 
-Recommend to use uv (install [here](https://docs.astral.sh/uv/getting-started/installation/)), and remember ```bash uv sync``` for the first time
+Recommend to use uv (install [here](https://docs.astral.sh/uv/getting-started/installation/)), and remember ```uv sync``` for the first time
 
 ## Local (stdio) mcp server
-```bash uv run main.py```
+```uv run main.py```
 
 ## REST mcp server
-```bash uv run main.py --server --port=5001```
+```uv run main.py --server --port=5001```
 
 Port is optional, 5000 by default
 
@@ -36,6 +36,8 @@ Notes:
 
 # Run inside a container
 
-```bash docker build -t my-fill-mcp . ```    
-```bash docker run -it -p 5005:5005 my-fill-mcp python main.py --server --port=5005```
+```bash
+docker build -t my-fill-mcp .   
+docker run -it -p 5005:5005 my-fill-mcp python main.py --server --port=5005
+```
 

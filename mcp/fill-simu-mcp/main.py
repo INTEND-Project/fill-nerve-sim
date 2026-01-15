@@ -30,6 +30,18 @@ workloads:
         return "Success" if result else "Failed"
     except Exception as e:
         return str(e)
+    
+@mcp.tool
+def get_node_config(serial_number: str) -> str:
+    """Get the current node configuration from a selected machine using Nerve DNA API, 
+    including the workloads deployed, and their versions.
+
+    Inputs:
+    - serial_number: serial number of the machine (node)
+    Outputs:
+    - Node configuration YAML string.
+    """
+    return proxy.get_node_config(serial_number)
 
 #!/usr/bin/env python3
 if __name__ == "__main__":
