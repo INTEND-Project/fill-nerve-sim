@@ -74,6 +74,37 @@ const Modal: React.FC<ModalProps> = ({
   );
 };
 
+type LogModalProps = {
+  isOpen: boolean;
+  title: string;
+  content: string;
+  onClose: () => void;
+};
+
+const LogModal: React.FC<LogModalProps> = ({ isOpen, title, content, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="modal-backdrop">
+      <div className="modal-window log-modal" role="dialog" aria-modal="true" aria-labelledby="log-title">
+        <div className="modal-header">
+          <h2 id="log-title">{title}</h2>
+          <button className="icon-button" onClick={onClose} aria-label="Close dialog">
+            ✕
+          </button>
+        </div>
+        <div className="modal-body">
+          <pre className="log-viewer">{content || 'No log content found.'}</pre>
+        </div>
+        <div className="modal-footer">
+          <button className="primary-button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* -------------------------------------------------------------------------- */
 /*                                Node List Card                              */
 /* -------------------------------------------------------------------------- */
@@ -1010,6 +1041,13 @@ const App: React.FC = () => {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [logFiles, setLogFiles] = useState<string[]>([]);
+  const [logMenuOpen, setLogMenuOpen] = useState(false);
+  const [logLoading, setLogLoading] = useState(false);
+  const [logError, setLogError] = useState<string | null>(null);
+  const [logContent, setLogContent] = useState('');
+  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [selectedLogFile, setSelectedLogFile] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -1074,10 +1112,85 @@ const App: React.FC = () => {
     setNodes((prev) => prev.map((n) => (n.id === updatedNode.id ? updatedNode : n)));
   };
 
+  const loadLogList = async () => {
+    try {
+      setLogLoading(true);
+      setLogError(null);
+      const res = await fetch(`${API_BASE}/nerve/logs`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      setLogFiles(json.logs ?? []);
+    } catch (err) {
+      console.error(err);
+      setLogError('Failed to load logs.');
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
+  const toggleLogMenu = async () => {
+    const next = !logMenuOpen;
+    setLogMenuOpen(next);
+    if (next) {
+      await loadLogList();
+    }
+  };
+
+  const handleLogSelect = async (filename: string) => {
+    try {
+      setLogLoading(true);
+      setLogError(null);
+      setSelectedLogFile(filename);
+      const res = await fetch(`${API_BASE}/nerve/logs/${encodeURIComponent(filename)}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const text = await res.text();
+      setLogContent(text);
+      setLogModalOpen(true);
+      setLogMenuOpen(false);
+    } catch (err) {
+      console.error(err);
+      setLogError('Failed to load log file.');
+    } finally {
+      setLogLoading(false);
+    }
+  };
+
   return (
     <div className="app-root">
       <header className="app-header">
-        <h1>Simulated Nerve API for FILL machine analytics</h1>
+        <div className="app-header-row">
+          <h1>Simulated Nerve API for FILL machine analytics</h1>
+          <div className="log-dropdown">
+            <button className="secondary-button" onClick={toggleLogMenu} type="button">
+              Logs ▾
+            </button>
+            {logMenuOpen && (
+              <div className="log-menu" role="menu">
+                {logLoading && <div className="log-menu-item muted">Loading…</div>}
+                {logError && <div className="log-menu-item error">{logError}</div>}
+                {!logLoading && !logError && logFiles.length === 0 && (
+                  <div className="log-menu-item muted">No logs yet.</div>
+                )}
+                {!logLoading &&
+                  !logError &&
+                  logFiles.map((file) => (
+                    <button
+                      key={file}
+                      className="log-menu-item"
+                      onClick={() => handleLogSelect(file)}
+                      type="button"
+                    >
+                      {file}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </div>
       </header>
       <main className="app-main">
         {loading && <div className="banner info">Loading data from Nerve API…</div>}
@@ -1094,6 +1207,12 @@ const App: React.FC = () => {
           <WorkloadCard workloads={workloads} onWorkloadsUpdated={setWorkloads} />
         </div>
       </main>
+      <LogModal
+        isOpen={logModalOpen}
+        title={selectedLogFile ? `Log: ${selectedLogFile}` : 'Log'}
+        content={logContent}
+        onClose={() => setLogModalOpen(false)}
+      />
     </div>
   );
 };

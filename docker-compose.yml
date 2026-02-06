@@ -18,6 +18,8 @@ services:
       - mongo
     environment:
       - MONGO_URI=mongodb://mongo:27017
+    volumes:
+      - ./backend/log:/app/log
       
   nerve-dashboard:
     build: ./frontend
