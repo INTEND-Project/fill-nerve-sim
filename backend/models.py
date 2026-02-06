@@ -11,12 +11,17 @@ class NodeCreate(BaseModel):
     serialNumber: str
     labels: Optional[List[str]] = Field(default_factory=list)
     remoteConnections: Optional[List[dict]] = Field(default_factory=list)
+    state: Optional[str] = None
 
 
 class Node(NodeCreate):
     id: str = Field(alias="_id")
     state: str = "OFFLINE"
     createdAt: datetime
+
+
+class NodeStateUpdate(BaseModel):
+    state: str
 
 
 # Workload models
@@ -57,4 +62,3 @@ class DNAWorkloadEntry(BaseModel):
 class DNAConfig(BaseModel):
     schema_version: int
     workloads: List[DNAWorkloadEntry]
-

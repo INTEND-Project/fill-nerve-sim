@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import yaml from 'js-yaml';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
@@ -91,7 +92,10 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
   onNodesUpdated
 }) => {
   const [createOpen, setCreateOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [statusBusyId, setStatusBusyId] = useState<string | null>(null);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [newNode, setNewNode] = useState<Partial<Node>>({
     name: 'node-01',
@@ -100,6 +104,15 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
     status: 'ONLINE'
   });
   const [labelsInput, setLabelsInput] = useState('factory,lineA');
+  const [bulkYaml, setBulkYaml] = useState(`- name: node-01
+  serialNumber: SN0001
+  model: TTTech-R1
+  labels: [factory, lineA]
+  state: ONLINE
+- name: node-02
+  serialNumber: SN0002
+  state: OFFLINE
+`);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
 
@@ -134,6 +147,43 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
     setCreateOpen(true);
   };
 
+  const handleOpenBulk = () => {
+    setBulkOpen(true);
+  };
+
+  const handleToggleStatus = async (node: Node, event: React.MouseEvent) => {
+    event.stopPropagation();
+    const current = node.status.toUpperCase();
+    if (current !== 'ONLINE' && current !== 'OFFLINE') return;
+    const nextStatus = current === 'ONLINE' ? 'OFFLINE' : 'ONLINE';
+
+    try {
+      setStatusBusyId(node.id);
+      const res = await fetch(
+        `${API_BASE}/nerve/node/${encodeURIComponent(node.serialNumber)}/state`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ state: nextStatus })
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+      const updatedRaw = await res.json();
+      const updatedNode: Node = {
+        ...node,
+        status: updatedRaw.state ?? nextStatus
+      };
+      onNodesUpdated(nodes.map((n) => (n.id === node.id ? updatedNode : n)));
+    } catch (err) {
+      console.error(err);
+      alert('Failed to update node status.');
+    } finally {
+      setStatusBusyId(null);
+    }
+  };
+
   const submitCreate = async () => {
     try {
       setBusy(true);
@@ -155,7 +205,8 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
             newNode.secureId ?? `SEC${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
           serialNumber: newNode.serialNumber,
           labels,
-          remoteConnections: []
+          remoteConnections: [],
+          state: newNode.status ?? 'ONLINE'
         })
       });
 
@@ -187,6 +238,127 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
     }
   };
 
+  const submitBulkLoad = async () => {
+    let parsed: unknown;
+    try {
+      parsed = yaml.load(bulkYaml);
+    } catch (err) {
+      console.error(err);
+      alert('Invalid YAML. Please fix the syntax and try again.');
+      return;
+    }
+
+    if (!Array.isArray(parsed)) {
+      alert('YAML must be a list of node objects.');
+      return;
+    }
+
+    const entries = parsed as Record<string, any>[];
+    const createdNodes: Node[] = [];
+    const errors: string[] = [];
+
+    try {
+      setBulkBusy(true);
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        if (!entry || typeof entry !== 'object') {
+          errors.push(`Row ${index + 1}: entry is not an object.`);
+          continue;
+        }
+
+        const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        const serialNumber =
+          typeof entry.serialNumber === 'string' ? entry.serialNumber.trim() : '';
+
+        if (!name || !serialNumber) {
+          errors.push(`Row ${index + 1}: name and serialNumber are required.`);
+          continue;
+        }
+
+        const rawState =
+          typeof entry.state === 'string'
+            ? entry.state
+            : typeof entry.status === 'string'
+              ? entry.status
+              : 'ONLINE';
+        const state = rawState.toUpperCase();
+        if (!['ONLINE', 'OFFLINE', 'UNKNOWN'].includes(state)) {
+          errors.push(
+            `Row ${index + 1}: state must be ONLINE, OFFLINE, or UNKNOWN.`
+          );
+          continue;
+        }
+
+        let labels: string[] = [];
+        if (Array.isArray(entry.labels)) {
+          labels = entry.labels.map((label: any) => String(label)).filter(Boolean);
+        } else if (typeof entry.labels === 'string') {
+          labels = entry.labels
+            .split(',')
+            .map((label: string) => label.trim())
+            .filter(Boolean);
+        }
+
+        try {
+          const response = await fetch(`${API_BASE}/nerve/node`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              model: entry.model ?? 'TTTech-R1',
+              secureId:
+                entry.secureId ??
+                `SEC${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+              serialNumber,
+              labels,
+              remoteConnections: [],
+              state
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+          }
+
+          const raw = await response.json();
+          createdNodes.push({
+            id: raw._id,
+            name: raw.name,
+            model: raw.model,
+            status: raw.state ?? state,
+            serialNumber: raw.serialNumber,
+            secureId: raw.secureId,
+            labels: raw.labels ?? [],
+            createdAt: raw.createdAt,
+            configYaml: ''
+          });
+        } catch (err: any) {
+          console.error(err);
+          errors.push(
+            `Row ${index + 1}: failed to create node "${name}" (${serialNumber}).`
+          );
+        }
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+
+    if (createdNodes.length > 0) {
+      onNodesUpdated([...nodes, ...createdNodes]);
+    }
+
+    if (errors.length > 0) {
+      alert(
+        `Loaded ${createdNodes.length}/${entries.length} nodes.\n` +
+          `Errors:\n${errors.join('\n')}`
+      );
+      return;
+    }
+
+    alert(`Loaded ${createdNodes.length} nodes.`);
+    setBulkOpen(false);
+  };
+
   return (
     <div className="card">
       <div className="card-header">
@@ -197,6 +369,8 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
         <ul>
           {nodes.map((node) => {
             const isSelected = node.id === selectedNodeId;
+            const statusUpper = node.status.toUpperCase();
+            const canToggle = statusUpper === 'ONLINE' || statusUpper === 'OFFLINE';
             return (
               <li
                 key={node.id}
@@ -205,9 +379,17 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
               >
                 <div className="node-main-row">
                   <div className="node-name">{node.name}</div>
-                  <div className={`node-status status-${node.status.toLowerCase()}`}>
+                  <button
+                    type="button"
+                    className={`node-status status-${node.status.toLowerCase()}`}
+                    disabled={statusBusyId === node.id || !canToggle}
+                    onClick={(event) => handleToggleStatus(node, event)}
+                    title={`Toggle to ${
+                      statusUpper === 'ONLINE' ? 'OFFLINE' : 'ONLINE'
+                    }`}
+                  >
                     {node.status}
-                  </div>
+                  </button>
                 </div>
                 {isSelected && (
                   <div className="node-details">
@@ -247,8 +429,16 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
           -
         </button>
         <button
+          className="square-button"
+          disabled={busy || bulkBusy}
+          onClick={handleOpenBulk}
+          title="Load nodes from YAML"
+        >
+          L
+        </button>
+        <button
           className="square-button primary"
-          disabled={busy}
+          disabled={busy || bulkBusy}
           onClick={handleCreate}
           title="Create new node"
         >
@@ -300,6 +490,28 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
           <input
             value={labelsInput}
             onChange={(e) => setLabelsInput(e.target.value)}
+          />
+        </div>
+      </Modal>
+
+      <Modal
+        isOpen={bulkOpen}
+        title="Load Nodes (YAML)"
+        onClose={() => setBulkOpen(false)}
+        onSubmit={submitBulkLoad}
+        submitLabel="Load"
+      >
+        <p className="muted">
+          Provide a list of nodes. Each entry must include <strong>name</strong> and{' '}
+          <strong>serialNumber</strong>.
+        </p>
+        <div className="form-field">
+          <label>Nodes YAML</label>
+          <textarea
+            rows={10}
+            value={bulkYaml}
+            onChange={(e) => setBulkYaml(e.target.value)}
+            placeholder="Paste a YAML list of node objects."
           />
         </div>
       </Modal>

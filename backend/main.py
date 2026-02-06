@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import get_db
-from models import NodeCreate, WorkloadCreate, WorkloadVersionCreate
+from models import NodeCreate, NodeStateUpdate, WorkloadCreate, WorkloadVersionCreate
 
 app = FastAPI(title="Simulated TTTech Nerve API")
 
@@ -46,6 +46,20 @@ def get_node(serialNumber: str):
     return node
 
 
+@app.put("/nerve/node/{serialNumber}/state")
+def update_node_state(serialNumber: str, payload: NodeStateUpdate):
+    """Update a node's state (ONLINE/OFFLINE)."""
+    next_state = payload.state.strip().upper()
+    if next_state not in {"ONLINE", "OFFLINE"}:
+        raise HTTPException(status_code=400, detail="State must be ONLINE or OFFLINE")
+    db = get_db()
+    result = db.nodes.update_one({"serialNumber": serialNumber}, {"$set": {"state": next_state}})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Node not found")
+    node = db.nodes.find_one({"serialNumber": serialNumber})
+    return node
+
+
 @app.post("/nerve/node")
 def create_node(node: NodeCreate):
     """Create a new node."""
@@ -57,7 +71,10 @@ def create_node(node: NodeCreate):
 
     doc = node.dict()
     doc["_id"] = generate_id()
-    doc["state"] = "OFFLINE"
+    requested_state = (node.state or "OFFLINE").strip().upper()
+    if requested_state not in {"ONLINE", "OFFLINE", "UNKNOWN"}:
+        raise HTTPException(status_code=400, detail="State must be ONLINE, OFFLINE, or UNKNOWN")
+    doc["state"] = requested_state
     doc["createdAt"] = datetime.datetime.utcnow()
     # Initialize target configuration fields
     doc["target_config"] = {"schema_version": 1, "workloads": []}

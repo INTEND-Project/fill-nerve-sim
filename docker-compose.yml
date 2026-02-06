@@ -26,6 +26,18 @@ services:
       - "8080:80"
     depends_on:
       - nerve-app
+
+  mongo-express:
+    image: mongo-express:1.0.2-20
+    container_name: nerve_mongo_express
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mongo
+    environment:
+      - ME_CONFIG_MONGODB_SERVER=mongo
+      - ME_CONFIG_BASICAUTH_USERNAME=admin
+      - ME_CONFIG_BASICAUTH_PASSWORD=admin
     
 volumes:
   mongo-data:
