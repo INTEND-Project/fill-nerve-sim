@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import intendLogo from './assets/intend-logo.gif';
+import intendLogo from './assets/intend-black.svg';
 import yaml from 'js-yaml';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
