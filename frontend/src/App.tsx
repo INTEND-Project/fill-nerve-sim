@@ -22,6 +22,7 @@ export interface WorkloadVersion {
   id: string;              // _id
   version: string;         // name or releaseName
   image?: string;          // we use releaseName here for display
+  hash?: string;
   createdAt?: string;
 }
 
@@ -557,11 +558,20 @@ const NodeListCard: React.FC<NodeListCardProps> = ({
 
 type DnaConfigCardProps = {
   selectedNode: Node | null;
+  workloads: Workload[];
+  onWorkloadsUpdated: (workloads: Workload[]) => void;
   onNodeUpdated: (node: Node) => void;
 };
 
-const DnaConfigCard: React.FC<DnaConfigCardProps> = ({ selectedNode, onNodeUpdated }) => {
+const DnaConfigCard: React.FC<DnaConfigCardProps> = ({
+  selectedNode,
+  workloads,
+  onWorkloadsUpdated,
+  onNodeUpdated
+}) => {
   const [editOpen, setEditOpen] = useState(false);
+  const [sidebarLoading, setSidebarLoading] = useState(false);
+  const [sidebarError, setSidebarError] = useState<string | null>(null);
 
   // YAML currently displayed in the main card
   const [viewYaml, setViewYaml] = useState('');
@@ -596,6 +606,7 @@ const DnaConfigCard: React.FC<DnaConfigCardProps> = ({ selectedNode, onNodeUpdat
     // Seed editor with a copy of whatever is currently visible
     setEditorYaml(viewYaml);
     setEditOpen(true);
+    ensureAllVersionsLoaded();
   };
 
   const submitYaml = async () => {
@@ -626,6 +637,81 @@ const DnaConfigCard: React.FC<DnaConfigCardProps> = ({ selectedNode, onNodeUpdat
       alert('Failed to update DNA configuration.');
     }
   };
+
+  const ensureAllVersionsLoaded = async () => {
+    if (workloads.length === 0) return;
+    const toLoad = workloads.filter((w) => !w.versionsLoaded);
+    if (toLoad.length === 0) return;
+    try {
+      setSidebarLoading(true);
+      setSidebarError(null);
+      const updates: Workload[] = [];
+      for (const workload of toLoad) {
+        const res = await fetch(
+          `${API_BASE}/nerve/v3/workloads/${encodeURIComponent(workload.id)}/versions`
+        );
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const json = await res.json();
+        const versions: WorkloadVersion[] = (json.versions ?? []).map((v: any) => ({
+          id: v._id,
+          version: v.name ?? v.releaseName,
+          image: v.releaseName,
+          hash: v.hash,
+          createdAt: v.createdAt
+        }));
+        updates.push({ ...workload, versions, versionsLoaded: true });
+      }
+      const next = workloads.map((w) => updates.find((u) => u.id === w.id) ?? w);
+      onWorkloadsUpdated(next);
+    } catch (err) {
+      console.error(err);
+      setSidebarError('Failed to load workload versions.');
+    } finally {
+      setSidebarLoading(false);
+    }
+  };
+
+  const handleAddWorkloadEntry = (workloadName: string, versionName: string, hash?: string) => {
+    let config: any = {};
+    try {
+      config = yaml.load(editorYaml) ?? {};
+    } catch (err) {
+      console.error(err);
+      alert('Unable to parse current YAML.');
+      return;
+    }
+    if (typeof config !== 'object' || Array.isArray(config)) {
+      config = {};
+    }
+    if (!config.schema_version) {
+      config.schema_version = 1;
+    }
+    if (!Array.isArray(config.workloads)) {
+      config.workloads = [];
+    }
+    const exists = config.workloads.some(
+      (entry: any) =>
+        (entry?.name ?? '').toLowerCase() === workloadName.toLowerCase() &&
+        (entry?.version ?? '').toLowerCase() === versionName.toLowerCase()
+    );
+    if (!exists) {
+      const entry: Record<string, string> = { name: workloadName, version: versionName };
+      if (hash) {
+        entry.hash = hash;
+      }
+      config.workloads.push(entry);
+    }
+    setEditorYaml(yaml.dump(config, { lineWidth: -1 }));
+  };
+
+  const workloadVersionOptions = workloads.flatMap((workload) =>
+    (workload.versions ?? []).map((version) => ({
+      key: `${workload.id}:${version.id}`,
+      workloadName: workload.name,
+      versionName: version.version,
+      hash: version.hash
+    }))
+  );
 
   return (
     <div className="card">
@@ -662,14 +748,46 @@ const DnaConfigCard: React.FC<DnaConfigCardProps> = ({ selectedNode, onNodeUpdat
         onSubmit={submitYaml}
         submitLabel="Upload"
       >
-        <div className="form-field">
-          <label>DNA YAML</label>
-          <textarea
-            rows={16}
-            value={editorYaml}
-            onChange={(e) => setEditorYaml(e.target.value)}
-            spellCheck={false}
-          />
+        <div className="dna-editor-layout">
+          <div className="dna-editor-main">
+            <div className="form-field">
+              <label>DNA YAML</label>
+              <textarea
+                rows={16}
+                value={editorYaml}
+                onChange={(e) => setEditorYaml(e.target.value)}
+                spellCheck={false}
+              />
+            </div>
+          </div>
+          <aside className="dna-editor-sidebar">
+            <div className="dna-sidebar-header">
+              <h3>Workload versions</h3>
+              <button className="secondary-button" type="button" onClick={ensureAllVersionsLoaded}>
+                Refresh
+              </button>
+            </div>
+            {sidebarLoading && <p className="muted">Loading workload versions…</p>}
+            {sidebarError && <p className="muted">{sidebarError}</p>}
+            {!sidebarLoading && !sidebarError && workloadVersionOptions.length === 0 && (
+              <p className="muted">No workload versions found.</p>
+            )}
+            <div className="dna-sidebar-list">
+              {workloadVersionOptions.map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  className="dna-sidebar-item"
+                  onClick={() =>
+                    handleAddWorkloadEntry(item.workloadName, item.versionName, item.hash)
+                  }
+                >
+                  {item.workloadName}:{item.versionName}
+                  {item.hash ? `:${item.hash}` : ''}
+                </button>
+              ))}
+            </div>
+          </aside>
         </div>
       </Modal>
     </div>
@@ -1445,7 +1563,12 @@ const App: React.FC = () => {
             onSelectNode={setSelectedNodeId}
             onNodesUpdated={setNodes}
           />
-          <DnaConfigCard selectedNode={selectedNode} onNodeUpdated={handleNodeUpdated} />
+          <DnaConfigCard
+            selectedNode={selectedNode}
+            workloads={workloads}
+            onWorkloadsUpdated={setWorkloads}
+            onNodeUpdated={handleNodeUpdated}
+          />
           <WorkloadCard workloads={workloads} onWorkloadsUpdated={setWorkloads} />
         </div>
       </main>

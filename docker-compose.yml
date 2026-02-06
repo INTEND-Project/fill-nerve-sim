@@ -40,6 +40,18 @@ services:
       - ME_CONFIG_MONGODB_SERVER=mongo
       - ME_CONFIG_BASICAUTH_USERNAME=admin
       - ME_CONFIG_BASICAUTH_PASSWORD=admin
+
+  nerve-agent:
+    build: ./agent
+    container_name: nerve_agent
+    working_dir: /agent
+    stdin_open: true
+    tty: true
+    environment:
+      - OPENAI_API_KEY_FILE=/agent/openai.credential
+      - OPENAI_MODEL=gpt-5-mini
+    volumes:
+      - ./agent:/agent
     
 volumes:
   mongo-data:

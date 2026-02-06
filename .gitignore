@@ -235,3 +235,6 @@ Thumbs.db
 logs/
 *.log
 *.log.*
+
+# Agent secrets
+agent/openai.credential

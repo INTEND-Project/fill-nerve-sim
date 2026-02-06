@@ -493,6 +493,82 @@ body {
   resize: vertical;
 }
 
+/* DNA editor layout */
+
+.dna-editor-layout {
+  display: flex;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.dna-editor-main {
+  flex: 2;
+}
+
+.dna-editor-sidebar {
+  flex: 1;
+  border-left: 1px solid #e5e7eb;
+  padding-left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.dna-sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.dna-sidebar-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #111827;
+}
+
+.dna-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 380px;
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+.dna-sidebar-item {
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #111827;
+  transition:
+    background-color 0.1s ease,
+    border-color 0.1s ease,
+    box-shadow 0.1s ease;
+}
+
+.dna-sidebar-item:hover {
+  background-color: #f3f4ff;
+  border-color: #c7d2fe;
+}
+
+@media (max-width: 900px) {
+  .dna-editor-layout {
+    flex-direction: column;
+  }
+
+  .dna-editor-sidebar {
+    border-left: none;
+    border-top: 1px solid #e5e7eb;
+    padding-left: 0;
+    padding-top: 0.75rem;
+  }
+}
+
 /* Banners */
 
 .banner {
