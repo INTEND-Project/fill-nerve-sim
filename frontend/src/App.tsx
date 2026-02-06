@@ -691,6 +691,8 @@ const WorkloadCard: React.FC<WorkloadCardProps> = ({ workloads, onWorkloadsUpdat
 
   const [createWorkloadOpen, setCreateWorkloadOpen] = useState(false);
   const [createVersionOpen, setCreateVersionOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const [newWorkload, setNewWorkload] = useState<{ name: string; type: string }>({
     name: 'temperature-collector',
@@ -701,6 +703,17 @@ const WorkloadCard: React.FC<WorkloadCardProps> = ({ workloads, onWorkloadsUpdat
     version: '1.0.0',
     image: '1.0.0'
   });
+
+  const [bulkYaml, setBulkYaml] = useState(
+    `- name: temperature-collector
+  type: docker
+  versions:
+    - version: 1.0.0
+      image: temperature-collector:1.0.0
+- name: vibration-monitor
+  type: docker-compose
+`
+  );
 
   const selectedWorkload = workloads.find((w) => w.id === selectedWorkloadId) ?? null;
   const selectedVersion = selectedWorkload?.versions.find((v) => v.id === selectedVersionId) ?? null;
@@ -890,6 +903,172 @@ const WorkloadCard: React.FC<WorkloadCardProps> = ({ workloads, onWorkloadsUpdat
     }
   };
 
+  const openBulkLoad = () => {
+    setBulkYaml(
+      `- name: temperature-collector
+  type: docker
+  versions:
+    - version: 1.0.0
+      image: temperature-collector:1.0.0
+- name: vibration-monitor
+  type: docker-compose
+`
+    );
+    setBulkOpen(true);
+  };
+
+  const submitBulkLoad = async () => {
+    let parsed: unknown;
+    try {
+      parsed = yaml.load(bulkYaml);
+    } catch (err) {
+      console.error(err);
+      alert('Invalid YAML. Please fix the syntax and try again.');
+      return;
+    }
+
+    if (!Array.isArray(parsed)) {
+      alert('YAML must be a list of workload objects.');
+      return;
+    }
+
+    const entries = parsed as Record<string, any>[];
+    const createdWorkloads: Workload[] = [];
+    const errors: string[] = [];
+
+    try {
+      setBulkBusy(true);
+      for (let index = 0; index < entries.length; index += 1) {
+        const entry = entries[index];
+        if (!entry || typeof entry !== 'object') {
+          errors.push(`Row ${index + 1}: entry is not an object.`);
+          continue;
+        }
+
+        const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        if (!name) {
+          errors.push(`Row ${index + 1}: workload name is required.`);
+          continue;
+        }
+
+        const type = typeof entry.type === 'string' ? entry.type.trim() : 'docker';
+
+        let createdWorkload: Workload | null = null;
+        try {
+          const response = await fetch(`${API_BASE}/nerve/v3/workloads`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              type,
+              disabled: false
+            })
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const raw = await response.json();
+          createdWorkload = {
+            id: raw._id,
+            name: raw.name,
+            type: raw.type,
+            description: raw.type,
+            versions: [],
+            versionsLoaded: true
+          };
+        } catch (err) {
+          console.error(err);
+          errors.push(`Row ${index + 1}: failed to create workload "${name}".`);
+          continue;
+        }
+
+        if (!createdWorkload) {
+          errors.push(`Row ${index + 1}: failed to create workload "${name}".`);
+          continue;
+        }
+
+        const versionsInput = Array.isArray(entry.versions) ? entry.versions : [];
+        const createdVersions: WorkloadVersion[] = [];
+
+        for (let vIndex = 0; vIndex < versionsInput.length; vIndex += 1) {
+          const versionEntry = versionsInput[vIndex];
+          if (!versionEntry || typeof versionEntry !== 'object') {
+            errors.push(
+              `Row ${index + 1} version ${vIndex + 1}: version entry is not an object.`
+            );
+            continue;
+          }
+          const versionName =
+            typeof versionEntry.version === 'string' ? versionEntry.version.trim() : '';
+          if (!versionName) {
+            errors.push(
+              `Row ${index + 1} version ${vIndex + 1}: version is required.`
+            );
+            continue;
+          }
+
+          const image =
+            typeof versionEntry.image === 'string' ? versionEntry.image.trim() : '';
+          const releaseName = image || versionName;
+
+          try {
+            const response = await fetch(
+              `${API_BASE}/nerve/v3/workloads/${encodeURIComponent(
+                createdWorkload.id
+              )}/versions`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: versionName,
+                  releaseName,
+                  selectors: [],
+                  restartPolicy: 'always',
+                  resources: {},
+                  environmentVariables: [],
+                  secrets: []
+                })
+              }
+            );
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const raw = await response.json();
+            createdVersions.push({
+              id: raw._id,
+              version: raw.name ?? raw.releaseName,
+              image: raw.releaseName,
+              createdAt: raw.createdAt
+            });
+          } catch (err) {
+            console.error(err);
+            errors.push(
+              `Row ${index + 1} version ${vIndex + 1}: failed to create version "${versionName}".`
+            );
+          }
+        }
+
+        createdWorkloads.push({
+          ...createdWorkload,
+          versions: createdVersions
+        });
+      }
+    } finally {
+      setBulkBusy(false);
+    }
+
+    if (createdWorkloads.length > 0) {
+      onWorkloadsUpdated([...workloads, ...createdWorkloads]);
+    }
+
+    if (errors.length > 0) {
+      alert(
+        `Loaded ${createdWorkloads.length}/${entries.length} workloads.\n` +
+          `Errors:\n${errors.join('\n')}`
+      );
+      return;
+    }
+
+    alert(`Loaded ${createdWorkloads.length} workloads.`);
+    setBulkOpen(false);
+  };
+
   return (
     <div className="card">
       <div className="card-header">
@@ -949,25 +1128,34 @@ const WorkloadCard: React.FC<WorkloadCardProps> = ({ workloads, onWorkloadsUpdat
           })}
         </ul>
       </div>
-      <div className="card-footer card-footer-actions three-buttons">
+      <div className="card-footer card-footer-actions">
         <button
           className="square-button danger"
-          disabled={!selectedWorkload}
+          disabled={!selectedWorkload || bulkBusy}
           onClick={handleRemove}
           title="Remove workload / version"
         >
           -
         </button>
         <button
+          className="square-button"
+          disabled={bulkBusy}
+          onClick={openBulkLoad}
+          title="Load workloads from YAML"
+        >
+          L
+        </button>
+        <button
           className="square-button primary"
           onClick={openCreateWorkload}
+          disabled={bulkBusy}
           title="Add new workload"
         >
           +W
         </button>
         <button
           className="square-button primary"
-          disabled={!selectedWorkload}
+          disabled={!selectedWorkload || bulkBusy}
           onClick={openCreateVersion}
           title="Add new workload version"
         >
@@ -1003,6 +1191,30 @@ const WorkloadCard: React.FC<WorkloadCardProps> = ({ workloads, onWorkloadsUpdat
             <option value="docker">docker</option>
             <option value="docker-compose">docker-compose</option>
           </select>
+        </div>
+      </Modal>
+
+      {/* Load workloads modal */}
+      <Modal
+        isOpen={bulkOpen}
+        title="Load Workloads (YAML)"
+        onClose={() => setBulkOpen(false)}
+        onSubmit={submitBulkLoad}
+        submitLabel="Load"
+      >
+        <p className="muted">
+          Provide a list of workloads. Each workload requires <strong>name</strong>.{' '}
+          Versions are nested under <strong>versions</strong> and require{' '}
+          <strong>version</strong>.
+        </p>
+        <div className="form-field">
+          <label>Workloads YAML</label>
+          <textarea
+            rows={12}
+            value={bulkYaml}
+            onChange={(e) => setBulkYaml(e.target.value)}
+            placeholder="Paste a YAML list of workload objects."
+          />
         </div>
       </Modal>
 
@@ -1095,6 +1307,32 @@ const App: React.FC = () => {
 
         setNodes(nodesData);
         setWorkloads(workloadsData);
+
+        const workloadsWithVersions = await Promise.all(
+          workloadsData.map(async (workload) => {
+            try {
+              const res = await fetch(
+                `${API_BASE}/nerve/v3/workloads/${encodeURIComponent(workload.id)}/versions`
+              );
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const json = await res.json();
+
+              const versions: WorkloadVersion[] = (json.versions ?? []).map((v: any) => ({
+                id: v._id,
+                version: v.name ?? v.releaseName,
+                image: v.releaseName,
+                createdAt: v.createdAt
+              }));
+
+              return { ...workload, versions, versionsLoaded: true };
+            } catch (err) {
+              console.error(err);
+              return workload;
+            }
+          })
+        );
+
+        setWorkloads(workloadsWithVersions);
         if (nodesData.length > 0) {
           setSelectedNodeId(nodesData[0].id);
         }
