@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import intendLogo from './assets/intend-logo.gif';
 import yaml from 'js-yaml';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
@@ -1163,7 +1164,10 @@ const App: React.FC = () => {
     <div className="app-root">
       <header className="app-header">
         <div className="app-header-row">
-          <h1>Simulated Nerve API for FILL machine analytics</h1>
+          <div className="app-title">
+            <img src={intendLogo} alt="INTEND logo" className="app-logo" />
+            <h1>FILL Machine Analytics</h1>
+          </div>
           <div className="log-dropdown">
             <button className="secondary-button" onClick={toggleLogMenu} type="button">
               Logs ▾
