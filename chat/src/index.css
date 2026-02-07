@@ -6,6 +6,7 @@
   background-color: #e7f6f0;
   line-height: 1.5;
   --chat-panel-height: min(80vh, 760px);
+  --panel-gap: 1.25rem;
 }
 
 * {
@@ -59,8 +60,8 @@ body {
 }
 
 .chat-logo {
-  width: 44px;
-  height: 44px;
+  width: 88px;
+  height: 88px;
   object-fit: contain;
 }
 
@@ -101,15 +102,11 @@ body {
 .chat-panels {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 1.25rem;
+  grid-template-rows: calc(var(--chat-panel-height) * 0.7) calc(
+      var(--chat-panel-height) * 0.7
+    );
+  gap: var(--panel-gap);
   align-items: stretch;
-}
-
-.left-column {
-  display: grid;
-  grid-template-rows: 1fr 1fr;
-  gap: 1.25rem;
-  height: var(--chat-panel-height);
 }
 
 .chat-column {
@@ -134,10 +131,19 @@ body {
 }
 
 .chat-panel {
-  height: var(--chat-panel-height);
+  height: calc(var(--chat-panel-height) * 0.7);
   display: grid;
   grid-template-rows: 1fr auto;
   min-height: 0;
+}
+
+.logs-panel {
+  height: calc(var(--chat-panel-height) * 0.7);
+}
+
+.graph-panel {
+  grid-column: 1 / -1;
+  height: calc(var(--chat-panel-height) * 0.7);
 }
 
 .panel-header {
@@ -424,14 +430,15 @@ textarea:focus {
 
   .chat-panels {
     grid-template-columns: 1fr;
-  }
-
-  .left-column {
-    height: auto;
-    grid-template-rows: auto auto;
+    grid-template-rows: auto auto auto;
   }
 
   .chat-panel {
+    height: auto;
+  }
+
+  .logs-panel,
+  .graph-panel {
     height: auto;
   }
 

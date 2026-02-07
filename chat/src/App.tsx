@@ -361,53 +361,29 @@ const App: React.FC = () => {
       </header>
 
       <main className="chat-panels">
-        <div className="left-column">
-          <section className="panel logs-panel">
-            <div className="panel-header">
-              <div>
-                <p className="panel-title">Agent Logs</p>
-                <p className="panel-subtitle">Live stream from /logs/stream</p>
-              </div>
-              <div className={`log-status ${logStatus}`}>
-                <span className="status-dot" />
-                {logStatus === 'connected' ? 'Live' : 'Reconnecting'}
-              </div>
+        <section className="panel logs-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-title">Agent Logs</p>
+              <p className="panel-subtitle">Live stream from /logs/stream</p>
             </div>
-            <div className="log-list" ref={logListRef}>
-              {logs.length === 0 ? (
-                <p className="empty-state">Waiting for log events…</p>
-              ) : (
-                logs.map((entry, index) => (
-                  <div key={`${entry}-${index}`} className="log-row">
-                    {entry}
-                  </div>
-                ))
-              )}
+            <div className={`log-status ${logStatus}`}>
+              <span className="status-dot" />
+              {logStatus === 'connected' ? 'Live' : 'Reconnecting'}
             </div>
-          </section>
-
-          <section className="panel graph-panel">
-            <div className="panel-header">
-              <div>
-                <p className="panel-title">Agent Graph</p>
-                <p className="panel-subtitle">Agents, skills, tools, messages</p>
-              </div>
-            </div>
-            <div className="graph-canvas">
-              <ReactFlow
-                nodes={nodes}
-                edges={edges}
-                onNodesChange={onNodesChange}
-                onEdgesChange={onEdgesChange}
-                fitView
-              >
-                <MiniMap />
-                <Controls />
-                <Background gap={18} size={1} />
-              </ReactFlow>
-            </div>
-          </section>
-        </div>
+          </div>
+          <div className="log-list" ref={logListRef}>
+            {logs.length === 0 ? (
+              <p className="empty-state">Waiting for log events…</p>
+            ) : (
+              logs.map((entry, index) => (
+                <div key={`${entry}-${index}`} className="log-row">
+                  {entry}
+                </div>
+              ))
+            )}
+          </div>
+        </section>
 
         <div className="chat-column">
           <section className="panel chat-panel">
@@ -445,6 +421,28 @@ const App: React.FC = () => {
             <p className="helper">Press Enter to send, Shift+Enter for a new line.</p>
           </footer>
         </div>
+
+        <section className="panel graph-panel">
+          <div className="panel-header">
+            <div>
+              <p className="panel-title">Agent Graph</p>
+              <p className="panel-subtitle">Agents, skills, tools, messages</p>
+            </div>
+          </div>
+          <div className="graph-canvas">
+            <ReactFlow
+              nodes={nodes}
+              edges={edges}
+              onNodesChange={onNodesChange}
+              onEdgesChange={onEdgesChange}
+              fitView
+            >
+              <MiniMap />
+              <Controls />
+              <Background gap={18} size={1} />
+            </ReactFlow>
+          </div>
+        </section>
       </main>
     </div>
   );
