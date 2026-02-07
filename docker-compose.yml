@@ -3,15 +3,15 @@ version: '3.8'
 services:
   mongo:
     image: mongo:6.0
-    container_name: nerve_mongo
+    container_name: fill_mongo
     ports:
       - "27017:27017"
     volumes:
       - mongo-data:/data/db
 
-  nerve-app:
+  fill-app:
     build: ./backend
-    container_name: nerve_app
+    container_name: fill_app
     ports:
       - "3000:3000"
     depends_on:
@@ -21,17 +21,17 @@ services:
     volumes:
       - ./backend/log:/app/log
       
-  nerve-dashboard:
+  fill-dashboard:
     build: ./frontend
-    container_name: nerve_dashboard
+    container_name: fill_dashboard
     ports:
       - "8080:80"
     depends_on:
-      - nerve-app
+      - fill-app
 
   mongo-express:
     image: mongo-express:1.0.2-20
-    container_name: nerve_mongo_express
+    container_name: fill_mongo_express
     ports:
       - "8081:8081"
     depends_on:
@@ -41,17 +41,29 @@ services:
       - ME_CONFIG_BASICAUTH_USERNAME=admin
       - ME_CONFIG_BASICAUTH_PASSWORD=admin
 
-  nerve-agent:
+  fill-agent:
     build: ./agent
-    container_name: nerve_agent
+    container_name: fill_agent
     working_dir: /agent
     stdin_open: true
     tty: true
     environment:
       - OPENAI_API_KEY_FILE=/agent/openai.credential
       - OPENAI_MODEL=gpt-5-mini
+      - AGENT_HTTP_HOST=0.0.0.0
+      - AGENT_HTTP_PORT=8090
     volumes:
       - ./agent:/agent
+    ports:
+      - "8090:8090"
+
+  fill-chat:
+    build: ./chat
+    container_name: fill_chat
+    ports:
+      - "8091:80"
+    depends_on:
+      - fill-agent
     
 volumes:
   mongo-data:

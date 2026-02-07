@@ -1,9 +1,13 @@
+import argparse
 import json
 import os
 import subprocess
 import sys
+import threading
+from queue import Empty, Queue
 from dataclasses import dataclass
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -17,6 +21,34 @@ API_KEY_FILE = os.getenv("OPENAI_API_KEY_FILE", os.path.join(WORKDIR, "openai.cr
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 VERBOSE_DEFAULT = os.getenv("AGENT_VERBOSE", "true").lower() in {"1", "true", "yes", "on"}
 MAX_LOG_CHARS = int(os.getenv("AGENT_LOG_MAX_CHARS", "2000"))
+HTTP_HOST_DEFAULT = os.getenv("AGENT_HTTP_HOST", "0.0.0.0")
+HTTP_PORT_DEFAULT = int(os.getenv("AGENT_HTTP_PORT", "8090"))
+
+
+class LogStreamHub:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._subscribers: List[Queue[str]] = []
+
+    def subscribe(self) -> Queue[str]:
+        queue: Queue[str] = Queue()
+        with self._lock:
+            self._subscribers.append(queue)
+        return queue
+
+    def unsubscribe(self, queue: Queue[str]) -> None:
+        with self._lock:
+            if queue in self._subscribers:
+                self._subscribers.remove(queue)
+
+    def publish(self, message: str) -> None:
+        with self._lock:
+            subscribers = list(self._subscribers)
+        for queue in subscribers:
+            queue.put(message)
+
+
+LOG_STREAM_HUB = LogStreamHub()
 
 
 def read_text_file(path: str) -> str:
@@ -40,6 +72,7 @@ def log_event(event_type: str, payload: Dict[str, Any]) -> None:
     line = json.dumps(record, ensure_ascii=True)
     with open(log_path, "a", encoding="utf-8") as handle:
         handle.write(line + "\n")
+    LOG_STREAM_HUB.publish(line)
 
 
 def extract_skill_overview(skill_text: str) -> str:
@@ -342,6 +375,16 @@ class AgentState:
     skill_content: Optional[str] = None
 
 
+@dataclass
+class AgentManager:
+    client: OpenAI
+    agents: Dict[str, AgentState]
+    verbose: bool
+
+    def captain(self) -> AgentState:
+        return self.agents["captain"]
+
+
 def load_skill_content(skill_name: str) -> str:
     if not is_valid_skill_name(skill_name):
         raise ValueError("Invalid skill name.")
@@ -571,6 +614,111 @@ def dispatch_tool(
     raise ValueError(f"Unknown tool: {name}")
 
 
+def process_user_input(manager: AgentManager, user_input: str) -> str:
+    skills_context = list_skills_overview()
+    global_skill = load_global_skill()
+    if global_skill:
+        log_event(
+            "skill_loaded",
+            {
+                "agent": manager.captain().name,
+                "skill": "global",
+            },
+        )
+    return run_agent_turn(
+        client=manager.client,
+        agent=manager.captain(),
+        user_input=user_input,
+        skills_context=skills_context,
+        global_skill=global_skill,
+        agents=manager.agents,
+        verbose=manager.verbose,
+    )
+
+
+class AgentHTTPRequestHandler(BaseHTTPRequestHandler):
+    manager: AgentManager
+
+    def _send_json(self, status: int, payload: Dict[str, Any]) -> None:
+        body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
+
+    def do_POST(self) -> None:
+        if self.path != "/intent":
+            self._send_json(404, {"error": "Not found."})
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length > 0 else b""
+        try:
+            data = json.loads(raw.decode("utf-8")) if raw else {}
+        except json.JSONDecodeError:
+            self._send_json(400, {"error": "Invalid JSON body."})
+            return
+        user_input = data.get("input")
+        if not isinstance(user_input, str) or not user_input.strip():
+            self._send_json(400, {"error": "Missing 'input' string."})
+            return
+        response_text = process_user_input(self.manager, user_input.strip())
+        self._send_json(200, {"response": response_text})
+
+    def do_GET(self) -> None:
+        if self.path == "/skills":
+            self._send_json(200, {"skills": list_skills_overview()})
+            return
+        if self.path == "/agents":
+            self._send_json(200, list_agents(self.manager.agents))
+            return
+        if self.path == "/logs/stream":
+            self._handle_log_stream()
+            return
+        self._send_json(404, {"error": "Not found."})
+
+    def _handle_log_stream(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "keep-alive")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("X-Accel-Buffering", "no")
+        self.end_headers()
+
+        queue = LOG_STREAM_HUB.subscribe()
+        try:
+            self.wfile.write(b": connected\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    message = queue.get(timeout=15)
+                    safe_message = message.replace("\n", "\\n")
+                    payload = f"data: {safe_message}\n\n".encode("utf-8")
+                    self.wfile.write(payload)
+                    self.wfile.flush()
+                except Empty:
+                    self.wfile.write(b": keep-alive\n\n")
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+        finally:
+            LOG_STREAM_HUB.unsubscribe(queue)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        return
+
+
 def extract_tool_calls(response: Any) -> List[Any]:
     calls = []
     for item in getattr(response, "output", []):
@@ -602,6 +750,12 @@ def load_api_key() -> str:
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description="Agent runner")
+    parser.add_argument("--http", action="store_true", help="Run as HTTP server")
+    parser.add_argument("--host", default=HTTP_HOST_DEFAULT, help="HTTP host")
+    parser.add_argument("--port", type=int, default=HTTP_PORT_DEFAULT, help="HTTP port")
+    args = parser.parse_args()
+
     try:
         api_key = load_api_key()
     except Exception as exc:
@@ -611,8 +765,17 @@ def main() -> None:
 
     client = OpenAI(api_key=api_key)
     agents: Dict[str, AgentState] = {"captain": AgentState(name="captain", role="captain")}
-    captain = agents["captain"]
-    verbose = VERBOSE_DEFAULT
+    manager = AgentManager(client=client, agents=agents, verbose=VERBOSE_DEFAULT)
+
+    if args.http:
+        server = ThreadingHTTPServer((args.host, args.port), AgentHTTPRequestHandler)
+        AgentHTTPRequestHandler.manager = manager
+        print(f"Agent HTTP server on http://{args.host}:{args.port}")
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nShutting down.")
+        return
 
     print("Agent ready. Type :help for commands.")
     print(f"Model: {MODEL}")
@@ -660,29 +823,11 @@ def main() -> None:
                 print(f"No such agent: {target}")
             continue
         if user_input == ":verbose":
-            verbose = not verbose
-            print(f"Verbose mode: {'on' if verbose else 'off'}")
+            manager.verbose = not manager.verbose
+            print(f"Verbose mode: {'on' if manager.verbose else 'off'}")
             continue
 
-        skills_context = list_skills_overview()
-        global_skill = load_global_skill()
-        if global_skill:
-            log_event(
-                "skill_loaded",
-                {
-                    "agent": captain.name,
-                    "skill": "global",
-                },
-            )
-        text = run_agent_turn(
-            client=client,
-            agent=captain,
-            user_input=user_input,
-            skills_context=skills_context,
-            global_skill=global_skill,
-            agents=agents,
-            verbose=verbose,
-        )
+        text = process_user_input(manager, user_input)
         print(text or "(no response)")
 
 
