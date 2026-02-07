@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r /agent/requirements.txt
 
 COPY . /agent
 
-CMD ["python", "/agent/app.py"]
+CMD ["python", "/agent/app.py", "--http"]

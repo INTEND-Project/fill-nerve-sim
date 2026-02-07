@@ -25,6 +25,34 @@ Add the service in `docker-compose.yml` (already included in this repo), then:
 docker compose up --build nerve-agent
 ```
 
+The container runs in HTTP mode by default. You can also exec into the container and run the CLI mode manually.
+
+```
+docker compose exec nerve-agent python /agent/app.py
+```
+
+## HTTP API
+
+```
+POST http://localhost:8090/intent
+Content-Type: application/json
+
+{ "input": "your message" }
+```
+
+Response:
+
+```
+{ "response": "agent reply" }
+```
+
+Other endpoints:
+
+```
+GET http://localhost:8090/skills
+GET http://localhost:8090/agents
+```
+
 ## Skills
 
 - Global instructions live in `agent/skills/SKILL.md` (loaded by the captain).
