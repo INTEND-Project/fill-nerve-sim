@@ -107,12 +107,18 @@ body {
     );
   gap: var(--panel-gap);
   align-items: stretch;
+  position: relative;
 }
 
 .chat-column {
   display: grid;
   grid-template-rows: 1fr auto;
   gap: 0.75rem;
+  height: calc(var(--chat-panel-height) * 0.7);
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  z-index: 2;
 }
 
 .panel {
@@ -131,7 +137,6 @@ body {
 }
 
 .chat-panel {
-  height: calc(var(--chat-panel-height) * 0.7);
   display: grid;
   grid-template-rows: 1fr auto;
   min-height: 0;
@@ -144,6 +149,8 @@ body {
 .graph-panel {
   grid-column: 1 / -1;
   height: calc(var(--chat-panel-height) * 0.7);
+  position: relative;
+  z-index: 1;
 }
 
 .panel-header {
@@ -345,6 +352,9 @@ body {
 .chat-input {
   display: grid;
   gap: 0.4rem;
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
 }
 
 .input-shell {
