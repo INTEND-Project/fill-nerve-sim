@@ -1,6 +1,6 @@
 # Agent
 
-A simple command-line agent that runs inside a container, uses the OpenAI API, and can call tools for shell access, Python execution, file I/O, and HTTP requests.
+A simple command-line agent that runs inside a container, uses the OpenAI API, and can call tools for shell access, Python execution, file I/O, and HTTP requests. It supports multi-agent delegation with a main coordinator ("captain") and named sub-agents.
 
 ## Setup
 
@@ -22,17 +22,24 @@ export OPENAI_MODEL=gpt-5-mini
 Add the service in `docker-compose.yml` (already included in this repo), then:
 
 ```
-docker compose up --build agent
+docker compose up --build nerve-agent
 ```
 
 ## Skills
 
-- Skill folders live in `agent/skills/<skill-name>/SKILL.md`
-- The menu file is `agent/skills/menu.md`
-- The agent reloads all skill files each turn, so you can edit them while it runs.
+- Global instructions live in `agent/skills/SKILL.md` (loaded by the captain).
+- Skill folders live in `agent/skills/<skill-name>/SKILL.md`.
+- The agent reads only the overview section (between `#SKILL.md` and the next header) to list available skills.
+- Sub-agents load a single full skill file on demand and keep that specialization.
+
+## Logs
+
+- Logs are written to `agent/logs/YYYY-MM-DD.log` in JSON lines with timestamps.
 
 ## CLI commands
 
 - `:help` show commands
-- `:skills` print the current skills menu + all SKILL.md files
+- `:skills` print the current skills overview
+- `:agents` list active agents
+- `:kill <agent>` stop a sub-agent (captain cannot be killed)
 - `:exit` quit

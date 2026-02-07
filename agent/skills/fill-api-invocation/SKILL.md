@@ -1,10 +1,16 @@
-# SKILL.md
+#SKILL.md
 
-This skill explains how to use the simulated Nerve API in this repository to
-check and manage machine nodes, workloads/versions, and deploy or undeploy
+This skill explains how to use the simulated Nerve API to manage FILL machine data analytics. 
+The APIs can be used to check and manage machine nodes, workloads/versions, and deploy or undeploy
 workload versions via DNA target configuration.
 
-Base URL (local): `http://localhost:3000`
+Sample URL (local): `http://<host>:3000` Ask host (and port) before starting.
+
+## How to use the API to deploy workloads
+
+If the input is a list of workload:version entries, use "Deploy or undeploy via DNA target" section, to generate YAML payload and call "apply target".
+
+If the input is only a list of workloads (no versions provided), use "workload version" APIs to get the first version of the workload, and then "apply target".
 
 ## Nodes: list, create, update state, delete
 
@@ -133,3 +139,6 @@ Rules enforced by the simulator:
 
 To undeploy a workload version, remove it from the `workloads` list and reapply
 the target.
+
+
+

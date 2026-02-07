@@ -2,6 +2,8 @@ import json
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -9,7 +11,8 @@ from openai import OpenAI
 
 WORKDIR = os.getenv("AGENT_WORKDIR", "/agent")
 SKILLS_DIR = os.path.join(WORKDIR, "skills")
-MENU_FILE = os.path.join(SKILLS_DIR, "menu.md")
+GLOBAL_SKILL_FILE = os.path.join(SKILLS_DIR, "SKILL.md")
+LOGS_DIR = os.path.join(WORKDIR, "logs")
 API_KEY_FILE = os.getenv("OPENAI_API_KEY_FILE", os.path.join(WORKDIR, "openai.credential"))
 MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
 VERBOSE_DEFAULT = os.getenv("AGENT_VERBOSE", "true").lower() in {"1", "true", "yes", "on"}
@@ -28,41 +31,117 @@ def safe_abs_path(path: str) -> str:
     return abs_path
 
 
-def load_skills_context() -> str:
-    lines: List[str] = []
-    if os.path.isfile(MENU_FILE):
-        lines.append("Skills menu (from skills/menu.md):")
-        lines.append(read_text_file(MENU_FILE).strip())
+def log_event(event_type: str, payload: Dict[str, Any]) -> None:
+    os.makedirs(LOGS_DIR, exist_ok=True)
+    timestamp = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+    date_str = datetime.utcnow().date().isoformat()
+    log_path = os.path.join(LOGS_DIR, f"{date_str}.log")
+    record = {"ts": timestamp, "event": event_type, **payload}
+    line = json.dumps(record, ensure_ascii=True)
+    with open(log_path, "a", encoding="utf-8") as handle:
+        handle.write(line + "\n")
+
+
+def extract_skill_overview(skill_text: str) -> str:
+    lines = skill_text.splitlines()
+    start_index = None
+    for idx, line in enumerate(lines):
+        if line.strip() == "#SKILL.md":
+            start_index = idx + 1
+            break
+    if start_index is None:
+        return ""
+    overview_lines = []
+    for line in lines[start_index:]:
+        if line.lstrip().startswith("#"):
+            break
+        overview_lines.append(line)
+    return "\n".join(overview_lines).strip()
+
+
+def list_skills_overview() -> str:
+    if not os.path.isdir(SKILLS_DIR):
+        return "No skills directory found."
+
+    entries = []
+    if os.path.isfile(GLOBAL_SKILL_FILE):
+        entries.append("- (global) SKILL.md: present")
     else:
-        lines.append("No skills menu found at skills/menu.md.")
+        entries.append("- (global) SKILL.md: missing")
 
-    if os.path.isdir(SKILLS_DIR):
-        for entry in sorted(os.listdir(SKILLS_DIR)):
-            skill_path = os.path.join(SKILLS_DIR, entry)
-            if not os.path.isdir(skill_path):
-                continue
-            skill_file = os.path.join(skill_path, "SKILL.md")
-            if os.path.isfile(skill_file):
-                lines.append(f"\nSkill: {entry}")
-                lines.append(read_text_file(skill_file).strip())
-    else:
-        lines.append("No skills directory found.")
+    for entry in sorted(os.listdir(SKILLS_DIR)):
+        if entry == "SKILL.md":
+            continue
+        skill_path = os.path.join(SKILLS_DIR, entry)
+        if not os.path.isdir(skill_path):
+            continue
+        skill_file = os.path.join(skill_path, "SKILL.md")
+        if not os.path.isfile(skill_file):
+            continue
+        overview = extract_skill_overview(read_text_file(skill_file))
+        if overview:
+            entries.append(f"- {entry}: {overview}")
+        else:
+            entries.append(f"- {entry}: (no overview found)")
 
-    return "\n".join(lines).strip()
+    if not entries:
+        return "No skills found."
+
+    return "Available skills:\n" + "\n".join(entries)
 
 
-def build_system_prompt(skills_context: str) -> str:
-    base = (
+def load_global_skill() -> str:
+    if not os.path.isfile(GLOBAL_SKILL_FILE):
+        return ""
+    return read_text_file(GLOBAL_SKILL_FILE).strip()
+
+
+def is_valid_skill_name(name: str) -> bool:
+    if not name or name.strip() != name:
+        return False
+    if os.path.sep in name or (os.path.altsep and os.path.altsep in name):
+        return False
+    if name in {".", ".."} or ".." in name:
+        return False
+    return True
+
+
+def base_system_prompt() -> str:
+    return (
         "You are a command-line agent running in a container with access to a local shell and file system. "
         "Use the provided tools when you need to read/write files, run shell commands, execute Python, or call remote APIs. "
-        "When a task requires an external API, consult the SKILL.md instructions and use the http_request tool accordingly. "
         "If needed information is missing or unclear, ask a concise follow-up question."
     )
-    return f"{base}\n\n{skills_context}".strip()
 
 
-def tool_definitions() -> List[Dict[str, Any]]:
-    return [
+def build_captain_prompt(skills_context: str, global_skill: str) -> str:
+    base = base_system_prompt()
+    captain_rules = (
+        "You are the main coordinator agent named 'captain'. "
+        "Use the global SKILL.md below for domain instructions and workflows. "
+        "When a task should be specialized, split it into subtasks and delegate them via the delegate_task tool. "
+        "Do not load multiple skills into a single agent; each sub-agent must specialize in a single skill."
+    )
+    sections = [base, captain_rules]
+    if global_skill:
+        sections.append("Global SKILL.md:\n" + global_skill)
+    sections.append(skills_context)
+    return "\n\n".join(section for section in sections if section).strip()
+
+
+def build_worker_prompt(skill_name: str, skill_content: str, agent_name: str) -> str:
+    base = base_system_prompt()
+    worker_rules = (
+        f"You are a specialized sub-agent named '{agent_name}'. "
+        f"You are strictly limited to the skill '{skill_name}' and must not use or request other skills. "
+        "If a request is outside this skill, say so plainly."
+    )
+    sections = [base, worker_rules, f"Skill '{skill_name}' SKILL.md:\n{skill_content}"]
+    return "\n\n".join(section for section in sections if section).strip()
+
+
+def tool_definitions(include_delegate: bool) -> List[Dict[str, Any]]:
+    tools: List[Dict[str, Any]] = [
         {
             "type": "function",
             "name": "run_shell",
@@ -149,6 +228,32 @@ def tool_definitions() -> List[Dict[str, Any]]:
             },
         },
     ]
+    if include_delegate:
+        tools.append(
+            {
+                "type": "function",
+                "name": "delegate_task",
+                "description": "Delegate a subtask to a named sub-agent using a single skill.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agent_name": {"type": "string", "description": "Sub-agent name."},
+                        "skill_name": {"type": "string", "description": "Skill folder name."},
+                        "task": {"type": "string", "description": "Task description for the sub-agent."},
+                    },
+                    "required": ["agent_name", "skill_name", "task"],
+                },
+            }
+        )
+        tools.append(
+            {
+                "type": "function",
+                "name": "list_agents",
+                "description": "List active agents and their assigned skills.",
+                "parameters": {"type": "object", "properties": {}},
+            }
+        )
+    return tools
 
 
 def run_shell(command: str, cwd: Optional[str]) -> Dict[str, Any]:
@@ -228,8 +333,150 @@ def http_request(
         "body": response.text,
     }
 
+@dataclass
+class AgentState:
+    name: str
+    role: str
+    last_response_id: Optional[str] = None
+    skill_name: Optional[str] = None
+    skill_content: Optional[str] = None
 
-def dispatch_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
+
+def load_skill_content(skill_name: str) -> str:
+    if not is_valid_skill_name(skill_name):
+        raise ValueError("Invalid skill name.")
+    skill_file = os.path.join(SKILLS_DIR, skill_name, "SKILL.md")
+    abs_path = safe_abs_path(skill_file)
+    if not os.path.isfile(abs_path):
+        raise FileNotFoundError(f"Skill not found: {skill_name}")
+    return read_text_file(abs_path).strip()
+
+
+def list_agents(agents: Dict[str, AgentState]) -> Dict[str, Any]:
+    summary = []
+    for name in sorted(agents.keys()):
+        agent = agents[name]
+        summary.append(
+            {
+                "name": agent.name,
+                "role": agent.role,
+                "skill": agent.skill_name,
+            }
+        )
+    return {"agents": summary}
+
+
+def run_agent_turn(
+    client: OpenAI,
+    agent: AgentState,
+    user_input: str,
+    skills_context: str,
+    global_skill: str,
+    agents: Dict[str, AgentState],
+    verbose: bool,
+) -> str:
+    if agent.role == "captain":
+        system_prompt = build_captain_prompt(skills_context, global_skill)
+        tools = tool_definitions(include_delegate=True)
+    else:
+        if not agent.skill_name or agent.skill_content is None:
+            return "Error: sub-agent is missing a skill."
+        system_prompt = build_worker_prompt(agent.skill_name, agent.skill_content, agent.name)
+        tools = tool_definitions(include_delegate=False)
+
+    try:
+        response = client.responses.create(
+            model=MODEL,
+            input=[{"role": "user", "content": user_input}],
+            instructions=system_prompt,
+            tools=tools,
+            previous_response_id=agent.last_response_id,
+        )
+    except Exception as exc:
+        return f"Error: OpenAI request failed: {exc}"
+
+    while True:
+        tool_calls = extract_tool_calls(response)
+        if not tool_calls:
+            break
+        tool_outputs = []
+        for call in tool_calls:
+            call_id = getattr(call, "call_id", None) or getattr(call, "id", None)
+            if not call_id:
+                continue
+            try:
+                args = json.loads(getattr(call, "arguments", "") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            log_event(
+                "tool_invocation",
+                {
+                    "agent": agent.name,
+                    "tool": getattr(call, "name", ""),
+                    "args": args,
+                },
+            )
+            if verbose:
+                print(f"\n[{agent.name} tool] {getattr(call, 'name', '')} args={args}")
+            try:
+                result = dispatch_tool(
+                    getattr(call, "name", ""),
+                    args,
+                    agent=agent,
+                    agents=agents,
+                    client=client,
+                    skills_context=skills_context,
+                    global_skill=global_skill,
+                    verbose=verbose,
+                )
+            except Exception as exc:
+                result = {"error": str(exc)}
+            log_event(
+                "tool_result",
+                {
+                    "agent": agent.name,
+                    "tool": getattr(call, "name", ""),
+                    "result": result,
+                },
+            )
+            if verbose:
+                preview = json.dumps(result)
+                if len(preview) > MAX_LOG_CHARS:
+                    preview = preview[:MAX_LOG_CHARS] + "...(truncated)"
+                print(f"[{agent.name} tool] output={preview}")
+            tool_outputs.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json.dumps(result),
+                }
+            )
+        try:
+            response = client.responses.create(
+                model=MODEL,
+                input=tool_outputs,
+                instructions=system_prompt,
+                tools=tools,
+                previous_response_id=response.id,
+            )
+        except Exception as exc:
+            return f"Error: OpenAI follow-up failed: {exc}"
+
+    agent.last_response_id = response.id
+    return extract_text(response) or "(no response)"
+
+
+def dispatch_tool(
+    name: str,
+    args: Dict[str, Any],
+    *,
+    agent: AgentState,
+    agents: Dict[str, AgentState],
+    client: OpenAI,
+    skills_context: str,
+    global_skill: str,
+    verbose: bool,
+) -> Dict[str, Any]:
     if name == "run_shell":
         return run_shell(args["command"], args.get("cwd"))
     if name == "run_python":
@@ -250,6 +497,77 @@ def dispatch_tool(name: str, args: Dict[str, Any]) -> Dict[str, Any]:
             data=args.get("data"),
             timeout=args.get("timeout"),
         )
+    if name == "list_agents":
+        return list_agents(agents)
+    if name == "delegate_task":
+        if agent.role != "captain":
+            return {"error": "Only the captain can delegate tasks."}
+        agent_name = args["agent_name"]
+        skill_name = args["skill_name"]
+        task = args["task"]
+        if not is_valid_skill_name(skill_name):
+            return {"error": "Invalid skill name."}
+        if agent_name in agents:
+            worker = agents[agent_name]
+            if worker.role != "worker":
+                return {"error": "Agent name is already used by a non-worker."}
+            if worker.skill_name and worker.skill_name != skill_name:
+                return {
+                    "error": f"Agent '{agent_name}' is bound to skill '{worker.skill_name}'."
+                }
+        else:
+            worker = AgentState(name=agent_name, role="worker")
+            agents[agent_name] = worker
+            log_event(
+                "agent_created",
+                {
+                    "agent": worker.name,
+                    "created_by": agent.name,
+                    "role": worker.role,
+                },
+            )
+
+        if worker.skill_name is None:
+            try:
+                worker.skill_content = load_skill_content(skill_name)
+            except Exception as exc:
+                return {"error": str(exc)}
+            worker.skill_name = skill_name
+            log_event(
+                "skill_loaded",
+                {
+                    "agent": worker.name,
+                    "skill": worker.skill_name,
+                },
+            )
+
+        log_event(
+            "agent_message",
+            {
+                "from": agent.name,
+                "to": worker.name,
+                "content": task,
+            },
+        )
+        response_text = run_agent_turn(
+            client=client,
+            agent=worker,
+            user_input=task,
+            skills_context=skills_context,
+            global_skill=global_skill,
+            agents=agents,
+            verbose=verbose,
+        )
+        log_event(
+            "agent_message",
+            {
+                "from": worker.name,
+                "to": agent.name,
+                "content": response_text,
+            },
+        )
+        return {"agent_name": worker.name, "response": response_text}
+
     raise ValueError(f"Unknown tool: {name}")
 
 
@@ -292,7 +610,8 @@ def main() -> None:
         sys.exit(1)
 
     client = OpenAI(api_key=api_key)
-    last_response_id: Optional[str] = None
+    agents: Dict[str, AgentState] = {"captain": AgentState(name="captain", role="captain")}
+    captain = agents["captain"]
     verbose = VERBOSE_DEFAULT
 
     print("Agent ready. Type :help for commands.")
@@ -311,79 +630,59 @@ def main() -> None:
             print("Bye.")
             break
         if user_input == ":help":
-            print("Commands: :help, :skills, :verbose, :exit")
+            print("Commands: :help, :skills, :agents, :kill <agent>, :verbose, :exit")
             continue
         if user_input == ":skills":
-            print(load_skills_context())
+            print(list_skills_overview())
+            continue
+        if user_input == ":agents":
+            print(json.dumps(list_agents(agents), indent=2))
+            continue
+        if user_input.startswith(":kill "):
+            target = user_input.split(" ", 1)[1].strip()
+            if not target:
+                print("Usage: :kill <agent_name>")
+                continue
+            if target == "captain":
+                print("Cannot kill captain.")
+                continue
+            if target in agents:
+                del agents[target]
+                log_event(
+                    "agent_killed",
+                    {
+                        "agent": target,
+                        "killed_by": "user",
+                    },
+                )
+                print(f"Killed agent: {target}")
+            else:
+                print(f"No such agent: {target}")
             continue
         if user_input == ":verbose":
             verbose = not verbose
             print(f"Verbose mode: {'on' if verbose else 'off'}")
             continue
 
-        skills_context = load_skills_context()
-        system_prompt = build_system_prompt(skills_context)
-
-        try:
-            response = client.responses.create(
-                model=MODEL,
-                input=[{"role": "user", "content": user_input}],
-                instructions=system_prompt,
-                tools=tool_definitions(),
-                previous_response_id=last_response_id,
+        skills_context = list_skills_overview()
+        global_skill = load_global_skill()
+        if global_skill:
+            log_event(
+                "skill_loaded",
+                {
+                    "agent": captain.name,
+                    "skill": "global",
+                },
             )
-        except Exception as exc:
-            print(f"Error: OpenAI request failed: {exc}")
-            continue
-
-        while True:
-            tool_calls = extract_tool_calls(response)
-            if not tool_calls:
-                break
-            tool_outputs = []
-            for call in tool_calls:
-                call_id = getattr(call, "call_id", None) or getattr(call, "id", None)
-                if not call_id:
-                    continue
-                try:
-                    args = json.loads(getattr(call, "arguments", "") or "{}")
-                except json.JSONDecodeError:
-                    args = {}
-                if verbose:
-                    print(f"\n[tool] {getattr(call, 'name', '')} args={args}")
-                try:
-                    result = dispatch_tool(getattr(call, "name", ""), args)
-                except Exception as exc:
-                    result = {"error": str(exc)}
-                if verbose:
-                    preview = json.dumps(result)
-                    if len(preview) > MAX_LOG_CHARS:
-                        preview = preview[:MAX_LOG_CHARS] + "...(truncated)"
-                    print(f"[tool] output={preview}")
-                tool_outputs.append(
-                    {
-                        "type": "function_call_output",
-                        "call_id": call_id,
-                        "output": json.dumps(result),
-                    }
-                )
-            try:
-                response = client.responses.create(
-                    model=MODEL,
-                    input=tool_outputs,
-                    instructions=system_prompt,
-                    tools=tool_definitions(),
-                    previous_response_id=response.id,
-                )
-            except Exception as exc:
-                print(f"Error: OpenAI follow-up failed: {exc}")
-                response = None
-                break
-
-        if response is None:
-            continue
-        last_response_id = response.id
-        text = extract_text(response)
+        text = run_agent_turn(
+            client=client,
+            agent=captain,
+            user_input=user_input,
+            skills_context=skills_context,
+            global_skill=global_skill,
+            agents=agents,
+            verbose=verbose,
+        )
         print(text or "(no response)")
 
 
