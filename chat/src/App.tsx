@@ -1,4 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactFlow, {
+  Background,
+  Controls,
+  MiniMap,
+  Node,
+  Edge,
+  useEdgesState,
+  useNodesState
+} from 'reactflow';
+import 'reactflow/dist/style.css';
+import logo from './assets/intend-black.svg';
 
 const API_URL = 'http://localhost:8090/intent';
 const LOG_STREAM_URL = 'http://localhost:8090/logs/stream';
@@ -8,6 +19,17 @@ type Message = {
   role: 'user' | 'agent' | 'system';
   text: string;
 };
+
+type GraphKind = 'agent' | 'skill' | 'tool';
+
+type GraphNodeData = {
+  label: string;
+  kind: GraphKind;
+  highlighted?: boolean;
+};
+
+const buildNodeClass = (kind: GraphKind, highlighted?: boolean) =>
+  `graph-node ${kind}${highlighted ? ' highlighted' : ''}`;
 
 const initialMessages: Message[] = [
   {
@@ -24,9 +46,16 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [logStatus, setLogStatus] = useState<'connected' | 'disconnected'>('disconnected');
+  const [nodes, setNodes, onNodesChange] = useNodesState<GraphNodeData>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const listRef = useRef<HTMLDivElement | null>(null);
   const logListRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const nodesRef = useRef<Node<GraphNodeData>[]>([]);
+  const edgesRef = useRef<Edge[]>([]);
+  const nodeTimers = useRef<Map<string, number>>(new Map());
+  const edgeTimers = useRef<Map<string, number>>(new Map());
+  const nodeIndex = useRef(0);
 
   const canSend = useMemo(() => input.trim().length > 0 && !isSending, [input, isSending]);
 
@@ -51,6 +80,191 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    nodesRef.current = nodes;
+  }, [nodes]);
+
+  useEffect(() => {
+    edgesRef.current = edges;
+  }, [edges]);
+
+  const nextPosition = useCallback(() => {
+    const index = nodeIndex.current;
+    nodeIndex.current += 1;
+    const cols = 3;
+    const gapX = 170;
+    const gapY = 140;
+    return {
+      x: (index % cols) * gapX,
+      y: Math.floor(index / cols) * gapY
+    };
+  }, []);
+
+  const highlightNode = useCallback(
+    (id: string) => {
+      setNodes((prev) =>
+        prev.map((node) =>
+          node.id === id
+            ? {
+                ...node,
+                data: { ...node.data, highlighted: true },
+                className: buildNodeClass(node.data.kind, true)
+              }
+            : node
+        )
+      );
+      const existing = nodeTimers.current.get(id);
+      if (existing) {
+        window.clearTimeout(existing);
+      }
+      const timer = window.setTimeout(() => {
+        setNodes((prev) =>
+          prev.map((node) =>
+            node.id === id
+              ? {
+                  ...node,
+                  data: { ...node.data, highlighted: false },
+                  className: buildNodeClass(node.data.kind, false)
+                }
+              : node
+          )
+        );
+        nodeTimers.current.delete(id);
+      }, 2000);
+      nodeTimers.current.set(id, timer);
+    },
+    [setNodes]
+  );
+
+  const highlightEdge = useCallback(
+    (id: string) => {
+      setEdges((prev) =>
+        prev.map((edge) =>
+          edge.id === id
+            ? {
+                ...edge,
+                data: { ...edge.data, highlighted: true },
+                className: 'graph-edge highlighted'
+              }
+            : edge
+        )
+      );
+      const existing = edgeTimers.current.get(id);
+      if (existing) {
+        window.clearTimeout(existing);
+      }
+      const timer = window.setTimeout(() => {
+        setEdges((prev) =>
+          prev.map((edge) =>
+            edge.id === id
+              ? {
+                  ...edge,
+                  data: { ...edge.data, highlighted: false },
+                  className: 'graph-edge'
+                }
+              : edge
+          )
+        );
+        edgeTimers.current.delete(id);
+      }, 2000);
+      edgeTimers.current.set(id, timer);
+    },
+    [setEdges]
+  );
+
+  const ensureNode = useCallback(
+    (name: string, kind: GraphKind) => {
+      if (!name) return;
+      const existing = nodesRef.current.find((node) => node.id === name);
+      if (existing) {
+        highlightNode(name);
+        return;
+      }
+      const position = nextPosition();
+      const newNode: Node<GraphNodeData> = {
+        id: name,
+        position,
+        data: { label: name, kind },
+        type: 'default',
+        className: buildNodeClass(kind, false)
+      };
+      setNodes((prev) => [...prev, newNode]);
+    },
+    [highlightNode, nextPosition, setNodes]
+  );
+
+  const ensureEdge = useCallback(
+    (source: string, target: string, label?: string) => {
+      if (!source || !target || source === target) return;
+      const edgeId = `${source}__${target}`;
+      const existing = edgesRef.current.find((edge) => edge.id === edgeId);
+      if (existing) {
+        highlightEdge(edgeId);
+        return;
+      }
+      const newEdge: Edge = {
+        id: edgeId,
+        source,
+        target,
+        label,
+        animated: false,
+        className: 'graph-edge'
+      };
+      setEdges((prev) => [...prev, newEdge]);
+    },
+    [highlightEdge, setEdges]
+  );
+
+  const handleStructuredLog = useCallback(
+    (entry: string) => {
+      let payload: any;
+      try {
+        payload = JSON.parse(entry);
+      } catch (err) {
+        return;
+      }
+      const event = payload?.event;
+      if (!event) return;
+
+      if (event === 'agent_created') {
+        ensureNode(payload.agent, 'agent');
+        if (payload.created_by) {
+          ensureNode(payload.created_by, 'agent');
+          ensureEdge(payload.created_by, payload.agent, 'creates');
+        }
+        return;
+      }
+
+      if (event === 'skill_loaded') {
+        ensureNode(payload.agent, 'agent');
+        ensureNode(payload.skill, 'skill');
+        ensureEdge(payload.agent, payload.skill, 'skill');
+        return;
+      }
+
+      if (event === 'tool_invocation') {
+        ensureNode(payload.agent, 'agent');
+        ensureNode(payload.tool, 'tool');
+        ensureEdge(payload.agent, payload.tool, 'calls');
+        return;
+      }
+
+      if (event === 'tool_result') {
+        ensureNode(payload.agent, 'agent');
+        ensureNode(payload.tool, 'tool');
+        ensureEdge(payload.tool, payload.agent, 'returns');
+        return;
+      }
+
+      if (event === 'agent_message') {
+        ensureNode(payload.from, 'agent');
+        ensureNode(payload.to, 'agent');
+        ensureEdge(payload.from, payload.to, 'sends');
+      }
+    },
+    [ensureEdge, ensureNode]
+  );
+
+  useEffect(() => {
     const source = new EventSource(LOG_STREAM_URL);
 
     source.onopen = () => {
@@ -64,6 +278,7 @@ const App: React.FC = () => {
     source.onmessage = (event) => {
       if (!event.data) return;
       setLogs((prev) => [...prev, event.data]);
+      handleStructuredLog(event.data);
     };
 
     return () => {
@@ -133,7 +348,10 @@ const App: React.FC = () => {
     <div className="chat-app">
       <header className="chat-header">
         <div>
-          <p className="chat-title">Nerve Agent</p>
+          <div className="chat-title-row">
+            <img src={logo} alt="inSwitch logo" className="chat-logo" />
+            <p className="chat-title">inSwitch Agent</p>
+          </div>
           <p className="chat-subtitle">Connected on port 8090</p>
         </div>
         <div className="status-pill">
@@ -143,29 +361,53 @@ const App: React.FC = () => {
       </header>
 
       <main className="chat-panels">
-        <section className="panel logs-panel">
-          <div className="panel-header">
-            <div>
-              <p className="panel-title">Agent Logs</p>
-              <p className="panel-subtitle">Live stream from /logs/stream</p>
+        <div className="left-column">
+          <section className="panel logs-panel">
+            <div className="panel-header">
+              <div>
+                <p className="panel-title">Agent Logs</p>
+                <p className="panel-subtitle">Live stream from /logs/stream</p>
+              </div>
+              <div className={`log-status ${logStatus}`}>
+                <span className="status-dot" />
+                {logStatus === 'connected' ? 'Live' : 'Reconnecting'}
+              </div>
             </div>
-            <div className={`log-status ${logStatus}`}>
-              <span className="status-dot" />
-              {logStatus === 'connected' ? 'Live' : 'Reconnecting'}
+            <div className="log-list" ref={logListRef}>
+              {logs.length === 0 ? (
+                <p className="empty-state">Waiting for log events…</p>
+              ) : (
+                logs.map((entry, index) => (
+                  <div key={`${entry}-${index}`} className="log-row">
+                    {entry}
+                  </div>
+                ))
+              )}
             </div>
-          </div>
-          <div className="log-list" ref={logListRef}>
-            {logs.length === 0 ? (
-              <p className="empty-state">Waiting for log events…</p>
-            ) : (
-              logs.map((entry, index) => (
-                <div key={`${entry}-${index}`} className="log-row">
-                  {entry}
-                </div>
-              ))
-            )}
-          </div>
-        </section>
+          </section>
+
+          <section className="panel graph-panel">
+            <div className="panel-header">
+              <div>
+                <p className="panel-title">Agent Graph</p>
+                <p className="panel-subtitle">Agents, skills, tools, messages</p>
+              </div>
+            </div>
+            <div className="graph-canvas">
+              <ReactFlow
+                nodes={nodes}
+                edges={edges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                fitView
+              >
+                <MiniMap />
+                <Controls />
+                <Background gap={18} size={1} />
+              </ReactFlow>
+            </div>
+          </section>
+        </div>
 
         <div className="chat-column">
           <section className="panel chat-panel">
