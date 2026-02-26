@@ -64,6 +64,23 @@ services:
       - "8091:80"
     depends_on:
       - fill-agent
+
+  iexplain:
+    image: ejhusom/iexplain:latest
+    container_name: iexplain
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - ./workspace/iexplain-workspace:/app/workspace
+      - ./workspace/iexplain-logs:/app/logs
+      - ./workspace/skills:/app/skills
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
     
 volumes:
   mongo-data:

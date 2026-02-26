@@ -6,7 +6,7 @@
   background-color: #e7f6f0;
   line-height: 1.5;
   --chat-panel-height: min(80vh, 760px);
-  --panel-gap: 1.25rem;
+  --panel-gap: 0.4rem;
 }
 
 * {
@@ -39,8 +39,8 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  border-radius: 1.25rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 1rem;
   background: rgba(255, 255, 255, 0.85);
   box-shadow: 0 15px 35px rgba(15, 23, 42, 0.1);
   backdrop-filter: blur(8px);
@@ -377,7 +377,7 @@ textarea {
   font-family: inherit;
   background: #f8fafc;
   color: #0f172a;
-  min-height: 48px;
+  min-height: 96px;
 }
 
 textarea:focus {

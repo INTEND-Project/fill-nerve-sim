@@ -352,7 +352,6 @@ const App: React.FC = () => {
             <img src={logo} alt="inSwitch logo" className="chat-logo" />
             <p className="chat-title">inSwitch Agent</p>
           </div>
-          <p className="chat-subtitle">Connected on port 8090</p>
         </div>
         <div className="status-pill">
           <span className={`status-dot ${isSending ? 'busy' : 'ready'}`} />
@@ -418,7 +417,6 @@ const App: React.FC = () => {
                 Send
               </button>
             </div>
-            <p className="helper">Press Enter to send, Shift+Enter for a new line.</p>
           </footer>
         </div>
 
@@ -426,7 +424,6 @@ const App: React.FC = () => {
           <div className="panel-header">
             <div>
               <p className="panel-title">Agent Graph</p>
-              <p className="panel-subtitle">Agents, skills, tools, messages</p>
             </div>
           </div>
           <div className="graph-canvas">
