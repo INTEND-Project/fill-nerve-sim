@@ -41,6 +41,7 @@ type ModalProps = {
   onClose: () => void;
   onSubmit: () => void;
   submitLabel?: string;
+  className?: string;
   children: React.ReactNode;
 };
 
@@ -50,12 +51,18 @@ const Modal: React.FC<ModalProps> = ({
   onClose,
   onSubmit,
   submitLabel = 'Save',
+  className,
   children
 }) => {
   if (!isOpen) return null;
   return (
     <div className="modal-backdrop">
-      <div className="modal-window" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div
+        className={`modal-window ${className ?? ''}`.trim()}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-title"
+      >
         <div className="modal-header">
           <h2 id="modal-title">{title}</h2>
           <button className="icon-button" onClick={onClose} aria-label="Close dialog">
@@ -721,7 +728,7 @@ const DnaConfigCard: React.FC<DnaConfigCardProps> = ({
       <div className="card-body dna-body">
         {!selectedNode && <p className="muted">Select a node to view its DNA configuration.</p>}
         {selectedNode && (
-          <SyntaxHighlighter language="yaml" style={oneDark} customStyle={{ maxHeight: 400 }}>
+          <SyntaxHighlighter language="yaml" style={oneDark}>
             {viewYaml || '# Empty configuration'}
           </SyntaxHighlighter>
         )}
@@ -739,6 +746,7 @@ const DnaConfigCard: React.FC<DnaConfigCardProps> = ({
 
       <Modal
         isOpen={editOpen}
+        className="dna-modal"
         title={
           selectedNode
             ? `Edit DNA configuration for ${selectedNode.name}`
