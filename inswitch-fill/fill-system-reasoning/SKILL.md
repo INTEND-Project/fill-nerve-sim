@@ -7,15 +7,17 @@ description: Infer required FILL workloads from user intent by mapping services 
 
 This is about how to interpret the user intent and decide which workloads should be deployed.
 
-## How to reason
+## How to reason (FOLLOW THESE STEPS EXACTLY)
 
 1. Match user intent keywords against the service descriptions and service quick reference below.
 2. Select exactly one most relevant service (`Service1`-`Service12`).
 3. Find all components for that service using `intend:hasComponent`.
 4. For every selected component, find all containers using `intend:hasContainer`.
-5. Return only those container names (without `fill:` prefix), one per line.
-6. Do not include containers from other services.
-7. Do not include explanations, prefixes, components, or services in the output.
+5. **If a machine type is provided** (e.g., "Machine1"), filter the container list using the `intend:canBeDeployedOn` triples. Only keep containers that have `intend:canBeDeployedOn fill:<MachineType>`. If a container does NOT have a `canBeDeployedOn` entry for the given machine type, REMOVE it from the list.
+6. **If no machine type is provided**, return all containers without filtering.
+7. Return only the final container names (without `fill:` prefix), one per line.
+8. Do not include containers from other services.
+9. Do not include explanations, prefixes, components, or services in the output.
 
 ## Service quick reference
 
@@ -84,9 +86,7 @@ fill:Service12 intend:hasComponent fill:Component8.
 fill:Service12 intend:hasComponent fill:Component9.
 ```
 
-## Finally, find the "containers" inside the component.
-
-The "container" here is the "workload" required as result of the reasoning task. Return the container name, without the prefix, e.g., return Container1 instead of fill:Container1
+## Step 3: Find the containers inside each component
 
 ```
 fill:Component1 intend:hasContainer fill:Container1.
@@ -131,4 +131,131 @@ fill:Component11 intend:hasContainer fill:Container39.
 fill:Component8 intend:hasContainer fill:Container40.
 fill:Component8 intend:hasContainer fill:Container41.
 fill:Component14 intend:hasContainer fill:Container42.
+```
+
+## Step 4: Filter containers by machine type compatibility
+
+If a machine type is provided (e.g., "Machine1"), use the triples below to filter. Only keep containers that have `intend:canBeDeployedOn fill:<MachineType>`. Remove any container that is NOT listed for the given machine type.
+
+If no machine type is provided, skip this step and return all containers from Step 3.
+
+```turtle
+fill:Container1 intend:canBeDeployedOn fill:Machine1.
+fill:Container1 intend:canBeDeployedOn fill:Machine2.
+fill:Container1 intend:canBeDeployedOn fill:Machine3.
+fill:Container1 intend:canBeDeployedOn fill:Machine4.
+fill:Container1 intend:canBeDeployedOn fill:Machine5.
+fill:Container2 intend:canBeDeployedOn fill:Machine1.
+fill:Container2 intend:canBeDeployedOn fill:Machine2.
+fill:Container2 intend:canBeDeployedOn fill:Machine3.
+fill:Container2 intend:canBeDeployedOn fill:Machine4.
+fill:Container3 intend:canBeDeployedOn fill:Machine2.
+fill:Container3 intend:canBeDeployedOn fill:Machine3.
+fill:Container4 intend:canBeDeployedOn fill:Machine2.
+fill:Container4 intend:canBeDeployedOn fill:Machine3.
+fill:Container5 intend:canBeDeployedOn fill:Machine1.
+fill:Container5 intend:canBeDeployedOn fill:Machine2.
+fill:Container5 intend:canBeDeployedOn fill:Machine3.
+fill:Container5 intend:canBeDeployedOn fill:Machine4.
+fill:Container5 intend:canBeDeployedOn fill:Machine5.
+fill:Container6 intend:canBeDeployedOn fill:Machine4.
+fill:Container6 intend:canBeDeployedOn fill:Machine5.
+fill:Container7 intend:canBeDeployedOn fill:Machine4.
+fill:Container10 intend:canBeDeployedOn fill:Machine4.
+fill:Container10 intend:canBeDeployedOn fill:Machine5.
+fill:Container11 intend:canBeDeployedOn fill:Machine1.
+fill:Container11 intend:canBeDeployedOn fill:Machine2.
+fill:Container11 intend:canBeDeployedOn fill:Machine3.
+fill:Container11 intend:canBeDeployedOn fill:Machine4.
+fill:Container11 intend:canBeDeployedOn fill:Machine5.
+fill:Container12 intend:canBeDeployedOn fill:Machine1.
+fill:Container12 intend:canBeDeployedOn fill:Machine2.
+fill:Container12 intend:canBeDeployedOn fill:Machine3.
+fill:Container12 intend:canBeDeployedOn fill:Machine4.
+fill:Container13 intend:canBeDeployedOn fill:Machine3.
+fill:Container14 intend:canBeDeployedOn fill:Machine3.
+fill:Container15 intend:canBeDeployedOn fill:Machine4.
+fill:Container15 intend:canBeDeployedOn fill:Machine5.
+fill:Container16 intend:canBeDeployedOn fill:Machine4.
+fill:Container17 intend:canBeDeployedOn fill:Machine1.
+fill:Container17 intend:canBeDeployedOn fill:Machine2.
+fill:Container17 intend:canBeDeployedOn fill:Machine3.
+fill:Container17 intend:canBeDeployedOn fill:Machine4.
+fill:Container17 intend:canBeDeployedOn fill:Machine5.
+fill:Container18 intend:canBeDeployedOn fill:Machine4.
+fill:Container18 intend:canBeDeployedOn fill:Machine5.
+fill:Container19 intend:canBeDeployedOn fill:Machine1.
+fill:Container19 intend:canBeDeployedOn fill:Machine2.
+fill:Container19 intend:canBeDeployedOn fill:Machine3.
+fill:Container19 intend:canBeDeployedOn fill:Machine4.
+fill:Container19 intend:canBeDeployedOn fill:Machine5.
+fill:Container20 intend:canBeDeployedOn fill:Machine4.
+fill:Container20 intend:canBeDeployedOn fill:Machine5.
+fill:Container21 intend:canBeDeployedOn fill:Machine1.
+fill:Container21 intend:canBeDeployedOn fill:Machine2.
+fill:Container21 intend:canBeDeployedOn fill:Machine3.
+fill:Container21 intend:canBeDeployedOn fill:Machine4.
+fill:Container21 intend:canBeDeployedOn fill:Machine5.
+fill:Container22 intend:canBeDeployedOn fill:Machine4.
+fill:Container22 intend:canBeDeployedOn fill:Machine5.
+fill:Container23 intend:canBeDeployedOn fill:Machine1.
+fill:Container23 intend:canBeDeployedOn fill:Machine2.
+fill:Container23 intend:canBeDeployedOn fill:Machine3.
+fill:Container23 intend:canBeDeployedOn fill:Machine4.
+fill:Container23 intend:canBeDeployedOn fill:Machine5.
+fill:Container24 intend:canBeDeployedOn fill:Machine4.
+fill:Container24 intend:canBeDeployedOn fill:Machine5.
+fill:Container25 intend:canBeDeployedOn fill:Machine1.
+fill:Container25 intend:canBeDeployedOn fill:Machine2.
+fill:Container25 intend:canBeDeployedOn fill:Machine3.
+fill:Container25 intend:canBeDeployedOn fill:Machine4.
+fill:Container25 intend:canBeDeployedOn fill:Machine5.
+fill:Container26 intend:canBeDeployedOn fill:Machine1.
+fill:Container26 intend:canBeDeployedOn fill:Machine2.
+fill:Container26 intend:canBeDeployedOn fill:Machine4.
+fill:Container26 intend:canBeDeployedOn fill:Machine5.
+fill:Container27 intend:canBeDeployedOn fill:Machine3.
+fill:Container27 intend:canBeDeployedOn fill:Machine4.
+fill:Container27 intend:canBeDeployedOn fill:Machine5.
+fill:Container28 intend:canBeDeployedOn fill:Machine4.
+fill:Container28 intend:canBeDeployedOn fill:Machine5.
+fill:Container29 intend:canBeDeployedOn fill:Machine1.
+fill:Container29 intend:canBeDeployedOn fill:Machine2.
+fill:Container29 intend:canBeDeployedOn fill:Machine3.
+fill:Container29 intend:canBeDeployedOn fill:Machine4.
+fill:Container29 intend:canBeDeployedOn fill:Machine5.
+fill:Container30 intend:canBeDeployedOn fill:Machine1.
+fill:Container30 intend:canBeDeployedOn fill:Machine2.
+fill:Container30 intend:canBeDeployedOn fill:Machine3.
+fill:Container30 intend:canBeDeployedOn fill:Machine4.
+fill:Container30 intend:canBeDeployedOn fill:Machine5.
+fill:Container31 intend:canBeDeployedOn fill:Machine1.
+fill:Container31 intend:canBeDeployedOn fill:Machine4.
+fill:Container31 intend:canBeDeployedOn fill:Machine5.
+fill:Container32 intend:canBeDeployedOn fill:Machine1.
+fill:Container32 intend:canBeDeployedOn fill:Machine4.
+fill:Container33 intend:canBeDeployedOn fill:Machine1.
+fill:Container33 intend:canBeDeployedOn fill:Machine4.
+fill:Container33 intend:canBeDeployedOn fill:Machine5.
+fill:Container34 intend:canBeDeployedOn fill:Machine1.
+fill:Container34 intend:canBeDeployedOn fill:Machine4.
+fill:Container34 intend:canBeDeployedOn fill:Machine5.
+fill:Container35 intend:canBeDeployedOn fill:Machine4.
+fill:Container35 intend:canBeDeployedOn fill:Machine5.
+fill:Container36 intend:canBeDeployedOn fill:Machine4.
+fill:Container37 intend:canBeDeployedOn fill:Machine4.
+fill:Container37 intend:canBeDeployedOn fill:Machine5.
+fill:Container38 intend:canBeDeployedOn fill:Machine4.
+fill:Container38 intend:canBeDeployedOn fill:Machine5.
+fill:Container39 intend:canBeDeployedOn fill:Machine1.
+fill:Container39 intend:canBeDeployedOn fill:Machine2.
+fill:Container39 intend:canBeDeployedOn fill:Machine4.
+fill:Container39 intend:canBeDeployedOn fill:Machine5.
+fill:Container40 intend:canBeDeployedOn fill:Machine1.
+fill:Container40 intend:canBeDeployedOn fill:Machine2.
+fill:Container41 intend:canBeDeployedOn fill:Machine1.
+fill:Container41 intend:canBeDeployedOn fill:Machine2.
+fill:Container42 intend:canBeDeployedOn fill:Machine1.
+fill:Container42 intend:canBeDeployedOn fill:Machine2.
+fill:Container42 intend:canBeDeployedOn fill:Machine3.
 ```
