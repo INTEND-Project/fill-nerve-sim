@@ -238,3 +238,6 @@ logs/
 
 # Agent secrets
 agent/openai.credential
+
+# Temporary files
+graph.ttl

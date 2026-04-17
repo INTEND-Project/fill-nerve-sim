@@ -21,11 +21,17 @@ The user provides intents about what they want to achieve for a machine. A seria
 
 The user will normally not directly mention which workloads to deploy, so this requires the system reasoning step (Step 1).
 
-If the user asks only for explanation of prior actions, skip Step 1 and Step 2 and go directly to Step 3. If the user asks to both deploy/manage and explain, run Step 1 and Step 2 first, then Step 3.
+Alternatively, if the user asks to explain what happened in the underlying system, skip Step 1 and 2, and go directly to the Explanation step.
 
-## Step 1: System reasoning (MANDATORY for deployment intent)
+## Step 1: System reasoning (MANDATORY for any deployment intent)
 
-Whenever the user expresses an intent that implies deployment or reconfiguration, delegate to the `fill-system-reasoning` agent to determine which workloads are needed. This step is MANDATORY unless the user has explicitly provided a list of workload names.
+Before delegating to the reasoning agent, you MUST determine the machine type of the target node:
+
+1. Call the NERVE API: `GET http://fill_app:3000/nerve/node/{serialNumber}`
+2. Read the `model` field from the response (e.g., "Machine1", "Machine2", etc.)
+3. Delegate to the `fill-system-reasoning` agent with BOTH the user intent AND the machine type
+
+Example delegation task: "Perform system reasoning for intent: 'monitor Fingerprint'. Machine type: Machine1. Return only container names."
 
 - Folder path to delegate to: `fill-system-reasoning`
 - The output is a list of workload (container) names (no versions, no explanation, no extra text)
@@ -34,17 +40,15 @@ Do NOT proceed to Step 2 without completing Step 1 when the intent is underspeci
 
 ## Step 2: API invocation
 
-Once the list of workloads is obtained (from Step 1 or directly from the user), delegate to the `fill-api-invocation` agent to deploy or manage them via the NERVE API.
+Once the list of workloads is obtained (from Step 1 or directly from the user), delegate to the `fill-api-invocation` agent to deploy them via the NERVE API.
 
 - Default API host: `http://fill_app:3000`
 - Folder path to delegate to: `fill-api-invocation`
 
-**IMPORTANT: Preserve existing workloads.** Before applying a new DNA target, always retrieve the current target and merge the new workloads with the existing ones. Never replace the full list, otherwise previously deployed workloads will be removed unintentionally.
-
-If requested workloads do not include versions, resolve versions through the workload version APIs before applying target. If the same workload already exists with a different version, ask the user whether to replace that workload version or keep both entries if the system allows it.
+**IMPORTANT — Preserve existing workloads**: Before applying a new DNA target, always retrieve the current target and merge the new workloads with the existing ones. Never replace the full list.
 
 ## Step 3: Explanation (optional)
 
-If the user wants to know what happened in the underlying system, delegate to the `fill-iexplain` agent. Use a dedicated agent for this step.
+If the user wants to know what happened in the underlying system, delegate to the `fill-iexplain` agent.
 
 - Folder path to delegate to: `fill-iexplain`
