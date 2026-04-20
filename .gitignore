@@ -235,9 +235,11 @@ Thumbs.db
 logs/
 *.log
 *.log.*
+inswitch-fill-logs/
 
 # Agent secrets
 agent/openai.credential
 
 # Temporary files
 graph.ttl
+
