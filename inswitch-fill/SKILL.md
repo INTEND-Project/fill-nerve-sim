@@ -7,22 +7,48 @@ description: Orchestrate intent-based management for FILL machine analytics by c
 
 This is about how to achieve intent-based management of FILL's machine analytics system. FILL manages a number of machine tools, on each of which can be deployed with several workloads (with a specific version) for data analytics.
 
+## Critical Rules (MANDATORY)
+
+1. **Always delegate to `fill-system-reasoning`** when the user expresses an intent that does NOT explicitly name the workloads to deploy (e.g., "monitor", "analyze", "detect", "optimize"). Do NOT guess workloads yourself.
+
+2. **Preserve existing workloads by default**. When deploying new workloads, merge them with the ones already on the node. Only remove workloads if the user explicitly asks to remove, replace, or reset them.
+
+3. **Never invent data** that does not exist in the NERVE API. Only report fields actually returned by the specific endpoint response you called. For node-related responses, common valid fields include `_id`, `name`, `state`, `deployed_workloads`, `serialNumber`, `model`, `secureId`, `labels`, `remoteConnections`, and `createdAt`. Do NOT report invented fields like "Health", "Last seen", "CPU usage", "uptime", etc. because these do not exist in this system.
+
 ## Input
 
-The user often provide "intents" about what they want to achieve for a machine. A Serial Numer of the target machine is mandatory. Ask the user if this is missing. They will normally not direcly mentioning which workloads, and this requires "system reasoning" step.
+The user provides intents about what they want to achieve for a machine. A serial number of the target machine is mandatory. Ask the user if this is missing.
 
-Alternatively, if the user ask to explain what happened to the underlying system, skip Step 1 and 2, and directly go to the explanation part.
+The user will normally not directly mention which workloads to deploy, so this requires the system reasoning step (Step 1).
 
-## Step 1: system reasoning (optional)
+Alternatively, if the user asks to explain what happened in the underlying system, skip Step 1 and 2, and go directly to the Explanation step.
 
-Based on user intent, an agent can do reasoning based on the knowledge graph of the whole FILL system to decide which workloads should be deployed on the target machine. There is a dedicated skill under an existing folder (fill-system-reasoning) about this. The output of this step is a list of workloads. Note that this skill only allows to get the workloads, without specific versions. Always ask the agent to only provide the workload (container) names, without any explanation or any other addition information.
+## Step 1: System reasoning (MANDATORY for any deployment intent)
+
+Before delegating to the reasoning agent, you MUST determine the machine type of the target node:
+
+1. Call the NERVE API: `GET http://fill_app:3000/nerve/node/{serialNumber}`
+2. Read the `model` field from the response (e.g., "Machine1", "Machine2", etc.)
+3. Delegate to the `fill-system-reasoning` agent with BOTH the user intent AND the machine type
+
+Example delegation task: "Perform system reasoning for intent: 'monitor Fingerprint'. Machine type: Machine1. Return only container names."
+
+- Folder path to delegate to: `fill-system-reasoning`
+- The output is a list of workload (container) names (no versions, no explanation, no extra text)
+
+Do NOT proceed to Step 2 without completing Step 1 when the intent is underspecified.
 
 ## Step 2: API invocation
 
-If the users provided specific workloads, or such workloads are received from a reasoning agent, an agent can call the FILL's NERVE api to deploy the workloads. There is skill ("fill-api-invocation") describes how to call the APIs. The same API can be used to check what machiens are there, the status of the machines, the current deployment, and the available workloads. 
+Once the list of workloads is obtained (from Step 1 or directly from the user), delegate to the `fill-api-invocation` agent to deploy them via the NERVE API.
 
-When you call the API invocation agent for the first time, tell it the host of the endpoint. By default, it is http://fill_app:3000 (If it does not work, ask the user)
+- Default API host: `http://fill_app:3000`
+- Folder path to delegate to: `fill-api-invocation`
 
-## Explanation
+**IMPORTANT — Preserve existing workloads**: Before applying a new DNA target, always retrieve the current target and merge the new workloads with the existing ones. Never replace the full list.
 
-If the use wants to know what happened in the underlying system, use the iExplain tool. There is a  skill under fill-iexplain. Use a dedicated agent for this. 
+## Step 3: Explanation (optional)
+
+If the user wants to know what happened in the underlying system, delegate to the `fill-iexplain` agent.
+
+- Folder path to delegate to: `fill-iexplain`

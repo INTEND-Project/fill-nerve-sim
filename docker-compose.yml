@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 
 services:
   mongo:
@@ -20,7 +20,7 @@ services:
       - MONGO_URI=mongodb://mongo:27017
     volumes:
       - ./backend/log:/app/log
-      
+
   fill-dashboard:
     build: ./frontend
     container_name: fill_dashboard
@@ -76,6 +76,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-    
+
+  fill-seed:
+    build: ./seed
+    container_name: fill_seed
+    depends_on:
+      - fill-app
+    command: ["python3", "seed.py", "http://fill_app:3000"]
+    profiles:
+      - seed
+
 volumes:
   mongo-data:

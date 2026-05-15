@@ -18,6 +18,14 @@ Use this skill to call iExplain and generate Markdown reports explaining what ha
 - User wants an explanation of system events
 - You need to generate a report about deployments or state changes
 
+## Report Guidelines
+
+1. ONLY use information from actual system logs and the knowledge graph reasoning path. Never invent or assume what containers do.
+2. Always explain the reasoning path: which service was matched (e.g. Service12 = Fingerprint), which components belong to that service (e.g. Component8), and which containers belong to those components (e.g. Container40, Container41). This is the ONLY valid explanation for why containers were selected.
+3. For deployment steps, only report what the API actually returned - HTTP status codes and response messages. Do not invent checks that do not exist in this system (no CPU validation, no memory checks, no affinity rules, no image compatibility checks).
+4. Never fabricate container descriptions. These containers are just names with no known internal functionality.
+5. Keep reports factual and concise: what was requested, what reasoning path was followed, what API calls were made, what responses were received, what the final state is.
+
 ## iExplain API
 
 Base URL: `http://iexplain:8000/api/v1` (in Docker network) or `http://localhost:8000/api/v1`
@@ -35,11 +43,12 @@ Content-Type: application/json
 ```
 
 Response:
+
 ```json
 {
   "session_id": "sess_abc123",
   "created_at": "2026-02-23T11:00:00",
-  "config": {"provider": "openai", "model": "gpt-4o-mini"}
+  "config": { "provider": "openai", "model": "gpt-4o-mini" }
 }
 ```
 
@@ -56,6 +65,7 @@ Content-Type: application/json
 ```
 
 Response:
+
 ```json
 {
   "job_id": "job_xyz789",
@@ -73,6 +83,7 @@ GET /api/v1/jobs/{job_id}
 Poll every 2-5 seconds until `status` is `completed` or `failed`.
 
 Response when completed:
+
 ```json
 {
   "job_id": "job_xyz789",
@@ -158,6 +169,7 @@ Generate a Markdown report with Summary, Timeline, Outcome, and Notes.
 ```
 
 Replace:
+
 - `{date}` with the date in YYYY-MM-DD format (e.g., 2026-02-23)
 - `{time}` with the time the intent was submitted (e.g., 11:32)
 - `{intent_description}` with what the user asked for
@@ -169,16 +181,20 @@ iExplain returns a Markdown report like:
 
 ```markdown
 ### Summary
+
 Following the intent at 11:32, Container29 was deployed to node-09 (SN0009).
 
 ### Timeline
+
 - **11:29:56** - Node "node-09" (SN0009) came online
 - **11:35:18** - Workload Container29 v1.0.0 deployed ← Result of intent
 
 ### Outcome
+
 Node SN0009 now has 2 workloads: temperature:1.0.0, Container29:1.0.0
 
 ### Notes
+
 - Deployment completed ~3 minutes after intent
 - No errors logged
 ```
@@ -192,6 +208,7 @@ GET /api/v1/health
 ```
 
 Response:
+
 ```json
-{"status": "healthy", "version": "1.0.0"}
+{ "status": "healthy", "version": "1.0.0" }
 ```
