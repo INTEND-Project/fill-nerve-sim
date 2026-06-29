@@ -243,3 +243,6 @@ agent/openai.credential
 # Temporary files
 graph.ttl
 
+
+# Runtime skill backups created by the supervisor agent
+**/.skill_backups/
