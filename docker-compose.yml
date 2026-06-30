@@ -42,7 +42,7 @@ services:
       - ME_CONFIG_BASICAUTH_PASSWORD=admin
 
   fill-agent:
-    image: songhui/inswitch:latest
+    image: saskia2111/inswitch:latest
     container_name: fill_agent
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
@@ -53,7 +53,7 @@ services:
       - "8085:8085"
 
   fill-chat:
-    image: songhui/inswitch-dashboard:latest
+    image: saskia2111/inswitch-dashboard:latest
     container_name: fill_chat
     ports:
       - "8086:8086"
