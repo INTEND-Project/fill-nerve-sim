@@ -27,11 +27,8 @@ OPENAI_API_KEY=sk-proj...
 docker compose up --build
 ```
 
-<<<<<<< HEAD
-The backend API for FILL simulator will be available at ```http://localhost:3000/``` And the frontend is at: ```http://localhost:8080```
+# The agent dashboard can be found at: `http://localhost:8086`
 
-The agent dashboard can be found at: ```http://localhost:8086```
-=======
 ### 3. Populate the database (first time only)
 
 On first startup, the database is empty. Run the seed to create all machines (8 nodes) and workloads (Container1-42):
@@ -59,4 +56,3 @@ docker compose --profile seed up --build
 | Agent Chat      | http://localhost:8086 | Chat interface for sending intents to the agent      |
 | Mongo Express   | http://localhost:8081 | MongoDB admin interface (login: admin / admin)       |
 | iExplain API    | http://localhost:8000 | Explainability service for generating intent reports |
->>>>>>> 90be2597aea868bd19b23c6e08c265db085bbd70
