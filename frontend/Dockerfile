@@ -7,6 +7,10 @@ COPY package.json yarn.lock* ./
 RUN yarn install --frozen-lockfile || yarn install
 
 COPY . .
+
+ARG VITE_API_BASE
+ENV VITE_API_BASE=$VITE_API_BASE
+
 RUN yarn build
 
 # Serve stage

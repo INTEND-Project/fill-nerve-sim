@@ -22,7 +22,10 @@ services:
       - ./backend/log:/app/log
 
   fill-dashboard:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_BASE=${VITE_API_BASE:-http://localhost:3000}
     container_name: fill_dashboard
     ports:
       - "8080:80"
